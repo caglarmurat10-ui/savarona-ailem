@@ -14,6 +14,10 @@ defaults:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      ADMIN_BOOTSTRAP_SECRET: ci-only-bootstrap-secret
+      SESSION_SIGNING_KEY: ci-only-session-signing-key
+      PUSH_TOKEN_ENCRYPTION_KEY: ci-only-push-encryption-key
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
