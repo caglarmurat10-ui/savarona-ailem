@@ -3,9 +3,9 @@ name: backend
 on:
   push:
     branches: [main, master]
-    paths: ['backend/**', '.github/workflows/backend.yml']
+    paths: ['backend/**', 'tools/deploy-cloudflare.ps1', 'DEPLOY-CLOUDFLARE.cmd', '.github/workflows/backend.yml']
   pull_request:
-    paths: ['backend/**', '.github/workflows/backend.yml']
+    paths: ['backend/**', 'tools/deploy-cloudflare.ps1', 'DEPLOY-CLOUDFLARE.cmd', '.github/workflows/backend.yml']
 
 defaults:
   run:
@@ -20,6 +20,17 @@ jobs:
       PUSH_TOKEN_ENCRYPTION_KEY: ci-only-push-encryption-key
     steps:
       - uses: actions/checkout@v4
+      - name: Parse deployment PowerShell
+        shell: pwsh
+        working-directory: .
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path './tools/deploy-cloudflare.ps1'), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - uses: actions/setup-node@v4
         with:
           node-version: 22
