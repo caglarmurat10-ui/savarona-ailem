@@ -29,9 +29,12 @@
       { "name": "FAMILY_LIVE", "class_name": "FamilyLive" }
     ]
   },
-  "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["FamilyLive"] }
-  ],
+  "exports": {
+    "FamilyLive": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
   "ratelimits": [
     { "name": "RATE_LIMIT_JOIN", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
     { "name": "RATE_LIMIT_INVITE", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
