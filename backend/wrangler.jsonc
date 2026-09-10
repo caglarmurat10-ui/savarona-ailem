@@ -9,6 +9,13 @@
     "OFFLINE_WARN_SECONDS": "90",
     "OFFLINE_SECONDS": "180"
   },
+  "secrets": {
+    "required": [
+      "ADMIN_BOOTSTRAP_SECRET",
+      "SESSION_SIGNING_KEY",
+      "PUSH_TOKEN_ENCRYPTION_KEY"
+    ]
+  },
   "d1_databases": [
     {
       "binding": "DB",
