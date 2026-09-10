@@ -3,6 +3,7 @@
 *.log
 backend/node_modules/
 backend/.wrangler/
+backend/wrangler.bootstrap.jsonc
 mobile/.dart_tool/
 mobile/build/
 mobile/.flutter-plugins*
@@ -11,3 +12,5 @@ __pycache__/
 *.pyc
 mobile/android/
 mobile/ios/
+.savarona-ailem.secrets.dpapi.json
+.savarona-ailem.deploy-result.json
