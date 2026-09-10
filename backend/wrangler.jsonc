@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "savarona-ailem-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_ENV": "production",
+    "OFFLINE_WARN_SECONDS": "90",
+    "OFFLINE_SECONDS": "180"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "savarona-ailem",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "FAMILY_LIVE", "class_name": "FamilyLive" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_classes": ["FamilyLive"] }
+  ],
+  "ratelimits": [
+    { "name": "RATE_LIMIT_JOIN", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
+    { "name": "RATE_LIMIT_INVITE", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
+    { "name": "RATE_LIMIT_BOOTSTRAP", "namespace_id": "1003", "simple": { "limit": 5, "period": 60 } }
+  ],
+  "triggers": {
+    "crons": ["*/2 * * * *"]
+  }
+}

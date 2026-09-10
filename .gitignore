@@ -1,0 +1,13 @@
+.DS_Store
+.env
+*.log
+backend/node_modules/
+backend/.wrangler/
+mobile/.dart_tool/
+mobile/build/
+mobile/.flutter-plugins*
+.claude/
+__pycache__/
+*.pyc
+mobile/android/
+mobile/ios/

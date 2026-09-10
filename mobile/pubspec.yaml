@@ -1,0 +1,24 @@
+name: savarona_ailem
+description: Savarona Ailem - consent-based realtime family location sharing
+publish_to: none
+version: 0.2.0+2
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.11.1
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  flutter_secure_storage: ^11.0.0
+  web_socket_channel: ^3.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,7 @@
+<!-- Merge into generated ios/Runner/Info.plist -->
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>Aile grubunuzla canlı konumunuzu paylaşmak için konum izni gerekir.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>Konum paylaşımı açıkken aile grubunuza arka planda da konum gönderebilmek için her zaman konum erişimi gerekir.</string>
+<key>UIBackgroundModes</key>
+<array><string>location</string></array>
