@@ -1,3 +1,7 @@
+param(
+  [string]$DatabaseId
+)
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -35,6 +39,40 @@ function Invoke-Wrangler {
   if ($LASTEXITCODE -ne 0) { throw "Wrangler command failed: wrangler $($Arguments -join ' ')" }
 }
 
+function Test-D1Id([string]$Value) {
+  return ($Value -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+}
+
+function Get-D1IdFromConfig([string]$Text) {
+  $match = [regex]::Match($Text, '"database_name"\s*:\s*"savarona-ailem"[\s\S]*?"database_id"\s*:\s*"([0-9a-fA-F-]{36})"')
+  if ($match.Success -and (Test-D1Id $match.Groups[1].Value)) { return $match.Groups[1].Value }
+  return $null
+}
+
+function Get-D1ObjectList([string]$JsonText) {
+  try {
+    $parsed = $JsonText | ConvertFrom-Json
+    if ($null -eq $parsed) { return @() }
+    if ($parsed -is [System.Array]) { return @($parsed) }
+    if ($parsed.PSObject.Properties.Name -contains 'result') { return @($parsed.result) }
+    if ($parsed.PSObject.Properties.Name -contains 'databases') { return @($parsed.databases) }
+    return @($parsed)
+  } catch {
+    return @()
+  }
+}
+
+function Get-D1IdFromObject($Db) {
+  if ($null -eq $Db) { return $null }
+  foreach ($property in @('uuid','id','database_id')) {
+    if ($Db.PSObject.Properties.Name -contains $property) {
+      $candidate = [string]$Db.$property
+      if (Test-D1Id $candidate) { return $candidate }
+    }
+  }
+  return $null
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $repoRoot 'backend'
 $configPath = Join-Path $backendDir 'wrangler.jsonc'
@@ -69,47 +107,78 @@ try {
   }
 
   Write-Step 'D1 database'
-  $dbRaw = (& npx.cmd wrangler d1 list --json 2>$null | Out-String)
-  if ($LASTEXITCODE -ne 0) { throw 'Could not list D1 databases.' }
-  $dbList = @($dbRaw | ConvertFrom-Json)
-  $db = $dbList | Where-Object { $_.name -eq 'savarona-ailem' } | Select-Object -First 1
-
-  if (-not $db) {
-    Write-Host 'Creating D1 database savarona-ailem...'
-    Invoke-Wrangler d1 create savarona-ailem --location eeur
-    $dbRaw = (& npx.cmd wrangler d1 list --json 2>$null | Out-String)
-    if ($LASTEXITCODE -ne 0) { throw 'Could not re-list D1 databases after create.' }
-    $dbList = @($dbRaw | ConvertFrom-Json)
-    $db = $dbList | Where-Object { $_.name -eq 'savarona-ailem' } | Select-Object -First 1
-  }
-  if (-not $db) { throw 'D1 database could not be resolved.' }
-
+  $configText = Get-Content $configPath -Raw
   $dbId = $null
-  foreach ($property in @('uuid','id','database_id')) {
-    if ($db.PSObject.Properties.Name -contains $property) {
-      $candidate = [string]$db.$property
-      if ($candidate) { $dbId = $candidate; break }
+
+  if ($DatabaseId) {
+    if (-not (Test-D1Id $DatabaseId)) { throw 'Supplied DatabaseId is not a valid D1 UUID.' }
+    $dbId = $DatabaseId
+    Write-Host "Using supplied D1 ID: $dbId"
+  }
+
+  if (-not $dbId) {
+    $configDbId = Get-D1IdFromConfig $configText
+    if ($configDbId) {
+      $dbId = $configDbId
+      Write-Host "Using D1 ID already present in wrangler.jsonc: $dbId"
     }
   }
-  if (-not $dbId) { throw 'D1 database ID could not be read.' }
+
+  if (-not $dbId) {
+    $dbRaw = (& npx.cmd wrangler d1 list --json --experimental-auto-create=false 2>$null | Out-String)
+    if ($LASTEXITCODE -eq 0) {
+      $dbList = Get-D1ObjectList $dbRaw
+      $db = $dbList | Where-Object { $_.name -eq 'savarona-ailem' } | Select-Object -First 1
+      $dbId = Get-D1IdFromObject $db
+    }
+  }
+
+  if (-not $dbId) {
+    Write-Host 'Creating D1 database savarona-ailem...'
+    $createLines = & npx.cmd wrangler d1 create savarona-ailem --location eeur --binding DB --update-config=false --experimental-auto-create=false 2>&1
+    $createExit = $LASTEXITCODE
+    $createLines | ForEach-Object { Write-Host $_ }
+    if ($createExit -ne 0) { throw 'D1 database creation failed.' }
+
+    $createText = $createLines -join "`n"
+    $uuidMatch = [regex]::Match($createText, '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+    if ($uuidMatch.Success) { $dbId = $uuidMatch.Value }
+
+    if (-not $dbId) {
+      $dbRaw = (& npx.cmd wrangler d1 list --json --experimental-auto-create=false 2>$null | Out-String)
+      if ($LASTEXITCODE -eq 0) {
+        $dbList = Get-D1ObjectList $dbRaw
+        $db = $dbList | Where-Object { $_.name -eq 'savarona-ailem' } | Select-Object -First 1
+        $dbId = Get-D1IdFromObject $db
+      }
+    }
+  }
+
+  if (-not $dbId -or -not (Test-D1Id $dbId)) { throw 'D1 database ID could not be resolved.' }
   Write-Host "D1: savarona-ailem ($dbId)" -ForegroundColor Green
 
-  $configText = Get-Content $configPath -Raw
-  $configText = [regex]::Replace(
-    $configText,
-    '("database_id"\s*:\s*")[^"]+("\s*)',
-    ('$1' + $dbId + '$2'),
-    1
+  # Normalize the D1 binding. This also removes an accidental binding that an
+  # interactive Wrangler create command may have inserted on an earlier run.
+  $configObject = $configText | ConvertFrom-Json
+  $configObject.d1_databases = @(
+    [pscustomobject]@{
+      binding = 'DB'
+      database_name = 'savarona-ailem'
+      database_id = $dbId
+      migrations_dir = 'migrations'
+    }
   )
+  $configText = $configObject | ConvertTo-Json -Depth 50
   Write-Utf8NoBom $configPath $configText
 
   # First deployment uses a temporary config without required-secret validation.
-  # This creates/updates the Worker safely; bootstrap is fail-closed while the secret is absent.
-  $configObject = $configText | ConvertFrom-Json
-  if ($configObject.PSObject.Properties.Name -contains 'secrets') {
-    $configObject.PSObject.Properties.Remove('secrets')
+  # This creates/updates the Worker safely; bootstrap remains fail-closed until
+  # the real ADMIN_BOOTSTRAP_SECRET is uploaded.
+  $bootstrapObject = $configText | ConvertFrom-Json
+  if ($bootstrapObject.PSObject.Properties.Name -contains 'secrets') {
+    $bootstrapObject.PSObject.Properties.Remove('secrets')
   }
-  Write-Utf8NoBom $bootstrapConfigPath ($configObject | ConvertTo-Json -Depth 50)
+  Write-Utf8NoBom $bootstrapConfigPath ($bootstrapObject | ConvertTo-Json -Depth 50)
 
   Write-Step 'Local secret state'
   if (Test-Path $secretStatePath) {
