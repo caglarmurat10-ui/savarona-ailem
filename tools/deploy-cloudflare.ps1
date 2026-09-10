@@ -49,30 +49,6 @@ function Get-D1IdFromConfig([string]$Text) {
   return $null
 }
 
-function Get-D1ObjectList([string]$JsonText) {
-  try {
-    $parsed = $JsonText | ConvertFrom-Json
-    if ($null -eq $parsed) { return @() }
-    if ($parsed -is [System.Array]) { return @($parsed) }
-    if ($parsed.PSObject.Properties.Name -contains 'result') { return @($parsed.result) }
-    if ($parsed.PSObject.Properties.Name -contains 'databases') { return @($parsed.databases) }
-    return @($parsed)
-  } catch {
-    return @()
-  }
-}
-
-function Get-D1IdFromObject($Db) {
-  if ($null -eq $Db) { return $null }
-  foreach ($property in @('uuid','id','database_id')) {
-    if ($Db.PSObject.Properties.Name -contains $property) {
-      $candidate = [string]$Db.$property
-      if (Test-D1Id $candidate) { return $candidate }
-    }
-  }
-  return $null
-}
-
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $backendDir = Join-Path $repoRoot 'backend'
 $configPath = Join-Path $backendDir 'wrangler.jsonc'
@@ -83,12 +59,8 @@ $resultPath = Join-Path $repoRoot '.savarona-ailem.deploy-result.json'
 Write-Host 'Savarona Ailem - Cloudflare Production Setup' -ForegroundColor Green
 Write-Host "Project: $repoRoot"
 
-if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) {
-  throw 'Node.js bulunamadi. Once Node.js 22 LTS kurulmali.'
-}
-if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) {
-  throw 'npm bulunamadi. Node.js kurulumunu kontrol edin.'
-}
+if (-not (Get-Command node.exe -ErrorAction SilentlyContinue)) { throw 'Node.js bulunamadi. Once Node.js 22 LTS kurulmali.' }
+if (-not (Get-Command npm.cmd -ErrorAction SilentlyContinue)) { throw 'npm bulunamadi. Node.js kurulumunu kontrol edin.' }
 if (-not (Test-Path $configPath)) { throw "Missing config: $configPath" }
 
 Push-Location $backendDir
@@ -106,79 +78,40 @@ try {
     Invoke-Wrangler whoami
   }
 
-  Write-Step 'D1 database'
+  Write-Step 'Production configuration validation'
   $configText = Get-Content $configPath -Raw
-  $dbId = $null
-
-  if ($DatabaseId) {
-    if (-not (Test-D1Id $DatabaseId)) { throw 'Supplied DatabaseId is not a valid D1 UUID.' }
-    $dbId = $DatabaseId
-    Write-Host "Using supplied D1 ID: $dbId"
-  }
-
-  if (-not $dbId) {
-    $configDbId = Get-D1IdFromConfig $configText
-    if ($configDbId) {
-      $dbId = $configDbId
-      Write-Host "Using D1 ID already present in wrangler.jsonc: $dbId"
-    }
-  }
-
-  if (-not $dbId) {
-    $dbRaw = (& npx.cmd wrangler d1 list --json --experimental-auto-create=false 2>$null | Out-String)
-    if ($LASTEXITCODE -eq 0) {
-      $dbList = Get-D1ObjectList $dbRaw
-      $db = $dbList | Where-Object { $_.name -eq 'savarona-ailem' } | Select-Object -First 1
-      $dbId = Get-D1IdFromObject $db
-    }
-  }
-
-  if (-not $dbId) {
-    Write-Host 'Creating D1 database savarona-ailem...'
-    $createLines = & npx.cmd wrangler d1 create savarona-ailem --location eeur --binding DB --update-config=false --experimental-auto-create=false 2>&1
-    $createExit = $LASTEXITCODE
-    $createLines | ForEach-Object { Write-Host $_ }
-    if ($createExit -ne 0) { throw 'D1 database creation failed.' }
-
-    $createText = $createLines -join "`n"
-    $uuidMatch = [regex]::Match($createText, '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
-    if ($uuidMatch.Success) { $dbId = $uuidMatch.Value }
-
-    if (-not $dbId) {
-      $dbRaw = (& npx.cmd wrangler d1 list --json --experimental-auto-create=false 2>$null | Out-String)
-      if ($LASTEXITCODE -eq 0) {
-        $dbList = Get-D1ObjectList $dbRaw
-        $db = $dbList | Where-Object { $_.name -eq 'savarona-ailem' } | Select-Object -First 1
-        $dbId = Get-D1IdFromObject $db
-      }
-    }
-  }
-
-  if (-not $dbId -or -not (Test-D1Id $dbId)) { throw 'D1 database ID could not be resolved.' }
-  Write-Host "D1: savarona-ailem ($dbId)" -ForegroundColor Green
-
-  # Normalize the D1 binding. This also removes an accidental binding that an
-  # interactive Wrangler create command may have inserted on an earlier run.
   $configObject = $configText | ConvertFrom-Json
-  $configObject.d1_databases = @(
-    [pscustomobject]@{
-      binding = 'DB'
-      database_name = 'savarona-ailem'
-      database_id = $dbId
-      migrations_dir = 'migrations'
-    }
-  )
-  $configText = $configObject | ConvertTo-Json -Depth 50
-  Write-Utf8NoBom $configPath $configText
 
-  # First deployment uses a temporary config without required-secret validation.
-  # This creates/updates the Worker safely; bootstrap remains fail-closed until
-  # the real ADMIN_BOOTSTRAP_SECRET is uploaded.
+  $configDbId = Get-D1IdFromConfig $configText
+  $dbId = if ($DatabaseId) { $DatabaseId } else { $configDbId }
+  if (-not $dbId -or -not (Test-D1Id $dbId)) { throw 'Valid D1 database ID is missing from wrangler.jsonc.' }
+  if ($DatabaseId -and $configDbId -and $DatabaseId -ne $configDbId) {
+    throw 'DatabaseId parameter differs from the production wrangler.jsonc. Update the tracked config deliberately instead of mutating it during deploy.'
+  }
+
+  if (-not ($configObject.PSObject.Properties.Name -contains 'exports')) { throw 'Durable Object exports block is missing.' }
+  if (-not ($configObject.exports.PSObject.Properties.Name -contains 'FamilyLive')) { throw 'FamilyLive Durable Object export is missing.' }
+  if ([string]$configObject.exports.FamilyLive.type -ne 'durable-object') { throw 'FamilyLive export type must be durable-object.' }
+  if ([string]$configObject.exports.FamilyLive.storage -ne 'sqlite') { throw 'FamilyLive Durable Object storage must be sqlite.' }
+  if ($configObject.PSObject.Properties.Name -contains 'migrations') { throw 'Legacy Durable Object migrations must not be present in production config.' }
+  Write-Host "D1: savarona-ailem ($dbId)" -ForegroundColor Green
+  Write-Host 'Durable Object: FamilyLive -> sqlite (declarative exports)' -ForegroundColor Green
+
+  # Bootstrap config differs only by removing required-secret validation. Never
+  # rewrite the tracked production configuration during deployment.
   $bootstrapObject = $configText | ConvertFrom-Json
   if ($bootstrapObject.PSObject.Properties.Name -contains 'secrets') {
     $bootstrapObject.PSObject.Properties.Remove('secrets')
   }
-  Write-Utf8NoBom $bootstrapConfigPath ($bootstrapObject | ConvertTo-Json -Depth 50)
+  $bootstrapText = $bootstrapObject | ConvertTo-Json -Depth 50
+  $bootstrapCheck = $bootstrapText | ConvertFrom-Json
+  if (-not ($bootstrapCheck.PSObject.Properties.Name -contains 'exports') -or
+      [string]$bootstrapCheck.exports.FamilyLive.storage -ne 'sqlite' -or
+      ($bootstrapCheck.PSObject.Properties.Name -contains 'migrations')) {
+    throw 'Generated bootstrap configuration is not a declarative SQLite Durable Object configuration.'
+  }
+  Write-Utf8NoBom $bootstrapConfigPath $bootstrapText
+  Write-Host 'Bootstrap config verified: FamilyLive storage=sqlite; legacy migrations=absent.' -ForegroundColor Green
 
   Write-Step 'Local secret state'
   if (Test-Path $secretStatePath) {
@@ -203,7 +136,7 @@ try {
   }
 
   Write-Step 'Create/update Worker shell'
-  Invoke-Wrangler deploy --config $bootstrapConfigPath
+  Invoke-Wrangler deploy --config $bootstrapConfigPath --experimental-auto-create=false
 
   Write-Step 'Upload encrypted Worker secrets'
   foreach ($item in @(
@@ -211,7 +144,7 @@ try {
     @{ Name='SESSION_SIGNING_KEY'; Value=$sessionKey },
     @{ Name='PUSH_TOKEN_ENCRYPTION_KEY'; Value=$pushKey }
   )) {
-    $item.Value | & npx.cmd wrangler secret put $item.Name --config $bootstrapConfigPath
+    $item.Value | & npx.cmd wrangler secret put $item.Name --config $bootstrapConfigPath --experimental-auto-create=false
     if ($LASTEXITCODE -ne 0) { throw "Failed to upload secret $($item.Name)." }
     Write-Host "Secret OK: $($item.Name)" -ForegroundColor Green
   }
@@ -223,10 +156,10 @@ try {
   $env:ADMIN_BOOTSTRAP_SECRET = $adminSecret
   $env:SESSION_SIGNING_KEY = $sessionKey
   $env:PUSH_TOKEN_ENCRYPTION_KEY = $pushKey
-  Invoke-Wrangler deploy --dry-run --config $configPath
+  Invoke-Wrangler deploy --dry-run --config $configPath --experimental-auto-create=false
 
   Write-Step 'Production deploy'
-  $deployLines = & npx.cmd wrangler deploy --config $configPath 2>&1
+  $deployLines = & npx.cmd wrangler deploy --config $configPath --experimental-auto-create=false 2>&1
   $exit = $LASTEXITCODE
   $deployLines | ForEach-Object { Write-Host $_ }
   if ($exit -ne 0) { throw 'Production deploy failed.' }
