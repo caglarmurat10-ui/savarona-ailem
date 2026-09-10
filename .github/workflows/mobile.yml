@@ -24,11 +24,11 @@ jobs:
         working-directory: mobile
       - run: flutter test
         working-directory: mobile
-      - run: flutter build apk --debug --dart-define=API_BASE_URL=https://example.invalid
+      - run: flutter build apk --debug --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
         working-directory: mobile
       - uses: actions/upload-artifact@v4
         with:
-          name: savarona-ailem-debug-apk
+          name: savarona-ailem-production-debug-apk
           path: mobile/build/app/outputs/flutter-apk/app-debug.apk
 
   ios-compile:
@@ -43,5 +43,5 @@ jobs:
       - run: python3 tools/bootstrap_mobile.py
       - run: flutter pub get
         working-directory: mobile
-      - run: flutter build ios --debug --no-codesign --dart-define=API_BASE_URL=https://example.invalid
+      - run: flutter build ios --debug --no-codesign --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
         working-directory: mobile
