@@ -20,7 +20,7 @@
     {
       "binding": "DB",
       "database_name": "savarona-ailem",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "dc0c27fc-1ee0-4c5c-8a58-95817640ebbd",
       "migrations_dir": "migrations"
     }
   ],
