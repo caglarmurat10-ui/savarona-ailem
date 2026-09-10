@@ -9,13 +9,6 @@ type PresenceRecord = {
 };
 
 export class FamilyLive extends DurableObject<Env> {
-  private readonly env: Env;
-
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
-    this.env = env;
-  }
-
   private async broadcast(message: string): Promise<number> {
     let delivered = 0;
     for (const ws of this.ctx.getWebSockets()) {
