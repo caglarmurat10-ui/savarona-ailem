@@ -30,7 +30,7 @@
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_classes": ["FamilyLive"] }
+    { "tag": "v1", "new_sqlite_classes": ["FamilyLive"] }
   ],
   "ratelimits": [
     { "name": "RATE_LIMIT_JOIN", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } },
