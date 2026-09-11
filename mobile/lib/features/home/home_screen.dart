@@ -4,6 +4,7 @@ import '../../core/config.dart';
 import '../../models/member_location.dart';
 import '../../models/permission_health.dart';
 import '../../services/api_client.dart';
+import '../../services/app_update_service.dart';
 import '../../services/live_socket.dart';
 import '../../services/native_tracking_service.dart';
 import '../map/live_map.dart';
@@ -22,11 +23,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late final LiveSocket _live = LiveSocket(widget.api);
   final NativeTrackingService _native = NativeTrackingService();
+  final AppUpdateService _updater = AppUpdateService();
   StreamSubscription? _liveSub;
   StreamSubscription? _connectionSub;
   List<MemberLocation> _members = const [];
   bool _loading = true;
   bool _trackingBusy = false;
+  bool _updateDialogOpen = false;
   PermissionHealth? _trackingHealth;
   LiveConnectionState _connection = LiveConnectionState.connecting;
 
@@ -51,7 +54,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
       await Future.wait([_live.start(), _refreshTrackingStatus()]);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+        unawaited(_checkForUpdate());
+      }
+    }
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (_updateDialogOpen) return;
+    try {
+      final release = await _updater.check();
+      if (!mounted || release == null || _updateDialogOpen) return;
+      _updateDialogOpen = true;
+      var busy = false;
+      String? error;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: !release.mandatory,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Savarona Ailem güncellemesi'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Yeni sürüm: ${release.versionName} (${release.versionCode})'),
+                const SizedBox(height: 8),
+                if (release.notes.isNotEmpty) Text(release.notes),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                ],
+              ],
+            ),
+            actions: [
+              if (!release.mandatory)
+                TextButton(
+                  onPressed: busy ? null : () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Sonra'),
+                ),
+              FilledButton.icon(
+                icon: busy
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.system_update_alt),
+                label: Text(busy ? 'İndiriliyor…' : 'Güncelle'),
+                onPressed: busy
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          busy = true;
+                          error = null;
+                        });
+                        try {
+                          final result = await _updater.downloadAndInstall(release);
+                          if (!context.mounted) return;
+                          setDialogState(() {
+                            busy = false;
+                            if (result == 'permission_required') {
+                              error = 'Android, bu uygulamaya yükleme izni istiyor. Açılan ayarda izin verip tekrar Güncelle’ye basın.';
+                            } else if (result != 'install_started') {
+                              error = 'Güncelleme başlatılamadı: $result';
+                            }
+                          });
+                        } catch (e) {
+                          if (!context.mounted) return;
+                          setDialogState(() {
+                            busy = false;
+                            error = 'Güncelleme indirilemedi. İnternet bağlantısını kontrol edip tekrar deneyin.';
+                          });
+                        }
+                      },
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (_) {
+      // Güncelleme kontrolü uygulamanın normal kullanımını engellemez.
+    } finally {
+      _updateDialogOpen = false;
     }
   }
 
