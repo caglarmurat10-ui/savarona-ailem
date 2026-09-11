@@ -1,1 +1,2 @@
 CI trigger for Android JSON numeric sanitization 0.3.3.
+local trigger
