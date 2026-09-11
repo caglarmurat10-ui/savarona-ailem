@@ -1,10 +1,10 @@
 {
   "available": true,
-  "version_name": "0.3.3",
-  "version_code": 6,
-  "download_url": "https://drive.usercontent.google.com/download?id=14JhT2EcALsTVMdHt2BAyN7rlEWAe0xk8&export=download&confirm=t",
-  "sha256": "a5c862546b0cdd7af90bd075a7ae022b8a418f52a1ae26e161932fb0d082d8c6",
+  "version_name": "0.3.4",
+  "version_code": 7,
+  "download_url": "https://drive.usercontent.google.com/download?id=1Q5AQiM2mICp0RL2b_joBBDcZk4dZdaBu&export=download&confirm=t",
+  "sha256": "4657e3b6195961fb6261665e3574f255a1cce8e36740209616ad978d35e9d8a9",
   "package_type": "zip",
-  "notes": "Android arka plan takibinde GPS'ten gelen geçersiz sayısal değerlerin JSONException oluşturması engellendi; eski bozuk kuyruk kayıtları otomatik atlanır.",
+  "notes": "Aile listesi uygulama açıkken 30 saniyede bir ve uygulama tekrar öne geldiğinde yenilenir; revoke edilen eski kullanıcılar ekrandan otomatik kalkar ve durumlar güncel kalır.",
   "mandatory": false
 }
