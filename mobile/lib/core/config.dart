@@ -4,6 +4,8 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'https://REPLACE_ME.workers.dev',
   );
+  static const buildCode = int.fromEnvironment('APP_BUILD_CODE', defaultValue: 3);
+  static const versionName = String.fromEnvironment('APP_VERSION_NAME', defaultValue: '0.3.0');
 
   static Uri wsUri(String ticket) {
     final base = Uri.parse(apiBaseUrl);
