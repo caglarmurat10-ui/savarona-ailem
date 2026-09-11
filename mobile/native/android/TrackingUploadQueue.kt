@@ -57,9 +57,10 @@ class TrackingUploadQueue(context: Context) : SQLiteOpenHelper(context.applicati
 
 data class LocationSample(val sequenceNo:Long,val capturedAt:Long,val lat:Double,val lng:Double,val accuracyM:Double?,val speedMps:Double?,val headingDeg:Double?,val batteryPct:Int?,val activity:String?)
 data class QueuedSample(val rowId:Long,val sequenceNo:Long,val capturedAt:Long,val lat:Double,val lng:Double,val accuracyM:Double?,val speedMps:Double?,val headingDeg:Double?,val batteryPct:Int?,val activity:String?) {
+    fun isUsable(): Boolean = lat.isFinite() && lng.isFinite() && lat in -90.0..90.0 && lng in -180.0..180.0
     fun toJson(): String = JSONObject().apply {
         put("sequence_no",sequenceNo); put("captured_at",capturedAt); put("lat",lat); put("lng",lng)
-        if(accuracyM!=null) put("accuracy_m",accuracyM); if(speedMps!=null) put("speed_mps",speedMps)
-        if(headingDeg!=null) put("heading_deg",headingDeg); if(batteryPct!=null) put("battery_pct",batteryPct); if(activity!=null) put("activity",activity)
+        if(accuracyM?.isFinite()==true) put("accuracy_m",accuracyM); if(speedMps?.isFinite()==true) put("speed_mps",speedMps)
+        if(headingDeg?.isFinite()==true) put("heading_deg",headingDeg); if(batteryPct!=null) put("battery_pct",batteryPct); if(activity!=null) put("activity",activity)
     }.toString()
 }

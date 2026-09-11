@@ -88,7 +88,10 @@ class LocationTrackingService : Service() {
     }
 
     private fun onNewLocation(location: android.location.Location) {
-        val speed = if (location.hasSpeed()) location.speed.toDouble() else null
+        val lat = location.latitude
+        val lng = location.longitude
+        if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+        val speed = if (location.hasSpeed()) location.speed.toDouble().takeIf { it.isFinite() && it >= 0.0 } else null
         val profile = when {
             speed != null && speed >= 8.0 -> SpeedProfile.VEHICLE
             speed != null && speed >= 0.5 -> SpeedProfile.WALKING
@@ -99,11 +102,11 @@ class LocationTrackingService : Service() {
         val sample = LocationSample(
             sequenceNo = TrackingStatusStore.nextSequenceNo(this),
             capturedAt = location.time,
-            lat = location.latitude,
-            lng = location.longitude,
-            accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble() else null,
+            lat = lat,
+            lng = lng,
+            accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble().takeIf { it.isFinite() && it >= 0.0 } else null,
             speedMps = speed,
-            headingDeg = if (location.hasBearing()) location.bearing.toDouble() else null,
+            headingDeg = if (location.hasBearing()) location.bearing.toDouble().takeIf { it.isFinite() } else null,
             batteryPct = currentBatteryPct(),
             activity = when (profile) {
                 SpeedProfile.VEHICLE -> "automotive"
@@ -175,6 +178,7 @@ class LocationTrackingService : Service() {
     }
 
     private fun sendSample(item: QueuedSample): SendOutcome {
+        if (!item.isUsable()) return SendOutcome.AlreadyDelivered
         val apiBaseUrl = TrackingStatusStore.apiBaseUrl(this) ?: return SendOutcome.Failed("missing_api_base_url")
         val deviceToken = TrackingStatusStore.deviceToken(this) ?: return SendOutcome.Failed("missing_device_token")
         return try {
