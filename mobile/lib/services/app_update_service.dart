@@ -9,6 +9,7 @@ class AppRelease {
     required this.versionCode,
     required this.downloadUrl,
     required this.sha256,
+    required this.packageType,
     required this.notes,
     required this.mandatory,
   });
@@ -17,6 +18,7 @@ class AppRelease {
   final int versionCode;
   final String downloadUrl;
   final String sha256;
+  final String packageType;
   final String notes;
   final bool mandatory;
 
@@ -25,6 +27,7 @@ class AppRelease {
         versionCode: (j['version_code'] as num?)?.toInt() ?? 0,
         downloadUrl: (j['download_url'] as String?) ?? '',
         sha256: ((j['sha256'] as String?) ?? '').toLowerCase(),
+        packageType: ((j['package_type'] as String?) ?? 'apk').toLowerCase(),
         notes: (j['notes'] as String?) ?? '',
         mandatory: j['mandatory'] == true,
       );
@@ -56,7 +59,8 @@ class AppUpdateService {
     final release = AppRelease.fromJson(data);
     if (release.versionCode <= AppConfig.buildCode ||
         !release.downloadUrl.startsWith('https://') ||
-        !RegExp(r'^[0-9a-f]{64}$').hasMatch(release.sha256)) {
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(release.sha256) ||
+        !const {'apk', 'zip'}.contains(release.packageType)) {
       return null;
     }
     return release;
@@ -67,6 +71,7 @@ class AppUpdateService {
       'url': release.downloadUrl,
       'sha256': release.sha256,
       'versionCode': release.versionCode,
+      'packageType': release.packageType,
     });
     return value ?? 'unknown';
   }
