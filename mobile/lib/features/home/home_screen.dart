@@ -110,6 +110,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     return 'Çevrimdışı';
   }
 
+  void _openMember(MemberLocation member) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MemberDetailScreen(
+          member: member,
+          api: widget.api,
+          connectionAge: age(member),
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -197,7 +209,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: Column(children: [
         if (connectionBanner != null) connectionBanner,
         if (trackingBanner != null) trackingBanner,
-        Expanded(flex: 5, child: LiveFamilyMap(members: _members)),
+        Expanded(
+          flex: 5,
+          child: LiveFamilyMap(
+            members: _members,
+            onMemberTap: _openMember,
+          ),
+        ),
         Expanded(flex: 4, child: ListView.builder(
           itemCount: _members.length,
           itemBuilder: (context, i) {
@@ -208,9 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               title: Text(m.name),
               subtitle: Text('${m.liveSpeedKmh?.toStringAsFixed(0) ?? '—'} km/sa • 🔋 ${m.batteryPct ?? '—'}% • ${age(m)}$permissionText'),
               trailing: m.headingDeg == null ? null : Text('${m.headingDeg!.round()}°'),
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => MemberDetailScreen(member: m, api: widget.api, connectionAge: age(m)),
-              )),
+              onTap: () => _openMember(m),
             );
           },
         )),
