@@ -33,7 +33,6 @@ class AppRelease {
 class AppUpdateService {
   AppUpdateService()
       : _dio = Dio(BaseOptions(
-          baseUrl: AppConfig.apiBaseUrl,
           connectTimeout: const Duration(seconds: 10),
           receiveTimeout: const Duration(seconds: 15),
         ));
@@ -42,14 +41,22 @@ class AppUpdateService {
   static const _channel = MethodChannel('savarona_ailem/updater');
 
   Future<AppRelease?> check() async {
-    if (!Platform.isAndroid) return null;
-    final r = await _dio.get('/v1/app-update/android');
-    final data = Map<String, dynamic>.from(r.data as Map);
+    if (!Platform.isAndroid || AppConfig.updateManifestUrl.isEmpty) return null;
+    final base = Uri.parse(AppConfig.updateManifestUrl);
+    final uri = base.replace(queryParameters: {
+      ...base.queryParameters,
+      't': DateTime.now().millisecondsSinceEpoch.toString(),
+    });
+    final r = await _dio.getUri(uri);
+    final raw = r.data;
+    final data = raw is Map
+        ? Map<String, dynamic>.from(raw)
+        : throw const FormatException('invalid_update_manifest');
     if (data['available'] != true) return null;
     final release = AppRelease.fromJson(data);
     if (release.versionCode <= AppConfig.buildCode ||
-        release.downloadUrl.isEmpty ||
-        release.sha256.length != 64) {
+        !release.downloadUrl.startsWith('https://') ||
+        !RegExp(r'^[0-9a-f]{64}$').hasMatch(release.sha256)) {
       return null;
     }
     return release;
