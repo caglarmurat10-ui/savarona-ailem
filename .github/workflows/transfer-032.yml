@@ -1,0 +1,23 @@
+name: transfer-032
+
+on:
+  pull_request:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download signed update package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download transfer-v0.3.2-20260911 --repo "$GITHUB_REPOSITORY" --pattern 'Savarona-Ailem-v0.3.2-update.zip'
+          echo 'cfef4588096682e6f9042a161b8a95d42ab67da82d1fbc24d72acefb257696e7  Savarona-Ailem-v0.3.2-update.zip' | sha256sum -c -
+      - name: Upload Drive transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: savarona-ailem-0.3.2-drive-package
+          path: Savarona-Ailem-v0.3.2-update.zip
+          retention-days: 1
