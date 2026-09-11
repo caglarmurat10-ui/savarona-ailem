@@ -1,0 +1,27 @@
+name: transfer-signed-apk
+
+on:
+  pull_request:
+    paths:
+      - '.transfer-apk-trigger'
+      - '.github/workflows/transfer-signed-apk.yml'
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download signed APK
+        run: |
+          curl -fL --retry 3 --retry-delay 2 \
+            -o /tmp/Savarona-Ailem-v0.3.0.apk \
+            'https://github.com/caglarmurat10-ui/savarona-ailem/releases/download/transfer-v0.3.0-20260911/Savarona-Ailem-v0.3.0.apk'
+      - name: Verify SHA-256
+        run: |
+          echo 'd73da792058bc3e3d2d5ca5add8104643596a7747dd5598a658f4e62d6d3a78a  /tmp/Savarona-Ailem-v0.3.0.apk' | sha256sum -c -
+      - name: Upload signed APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: savarona-ailem-signed-v0.3.0
+          path: /tmp/Savarona-Ailem-v0.3.0.apk
+          if-no-files-found: error
+          retention-days: 1
