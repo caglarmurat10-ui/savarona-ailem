@@ -4,8 +4,8 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'https://REPLACE_ME.workers.dev',
   );
-  static const buildCode = int.fromEnvironment('APP_BUILD_CODE', defaultValue: 3);
-  static const versionName = String.fromEnvironment('APP_VERSION_NAME', defaultValue: '0.3.0');
+  static const buildCode = int.fromEnvironment('APP_BUILD_CODE', defaultValue: 4);
+  static const versionName = String.fromEnvironment('APP_VERSION_NAME', defaultValue: '0.3.1');
   static const updateManifestUrl = String.fromEnvironment(
     'UPDATE_MANIFEST_URL',
     defaultValue: 'https://raw.githubusercontent.com/caglarmurat10-ui/savarona-ailem/main/updates/android-latest.json',
