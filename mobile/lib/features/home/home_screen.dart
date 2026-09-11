@@ -26,10 +26,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final AppUpdateService _updater = AppUpdateService();
   StreamSubscription? _liveSub;
   StreamSubscription? _connectionSub;
+  Timer? _snapshotTimer;
   List<MemberLocation> _members = const [];
   bool _loading = true;
   bool _trackingBusy = false;
   bool _updateDialogOpen = false;
+  bool _snapshotRefreshing = false;
   PermissionHealth? _trackingHealth;
   LiveConnectionState _connection = LiveConnectionState.connecting;
 
@@ -60,7 +62,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _refreshTrackingStatus();
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshTrackingStatus());
+      unawaited(_refreshSnapshot());
+      unawaited(_checkForUpdate());
+    }
   }
 
   Future<void> _load() async {
@@ -71,11 +77,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (mounted) setState(() => _connection = s);
       });
       await Future.wait([_live.start(), _refreshTrackingStatus()]);
+      _snapshotTimer ??= Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => unawaited(_refreshSnapshot()),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
         unawaited(_checkForUpdate());
       }
+    }
+  }
+
+  Future<void> _refreshSnapshot() async {
+    if (_snapshotRefreshing) return;
+    _snapshotRefreshing = true;
+    try {
+      final members = await widget.api.snapshot();
+      if (mounted) setState(() => _members = members);
+    } catch (_) {
+      // Keep the last good snapshot when the network is temporarily unavailable.
+    } finally {
+      _snapshotRefreshing = false;
     }
   }
 
@@ -227,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _liveSub?.cancel();
     _connectionSub?.cancel();
+    _snapshotTimer?.cancel();
     _live.stop();
     super.dispose();
   }
