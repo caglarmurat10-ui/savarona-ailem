@@ -48,12 +48,41 @@ async function bootstrap(request: Request, env: Env): Promise<Response> {
   const secret = request.headers.get('x-bootstrap-secret');
   if (!secret || secret !== env.ADMIN_BOOTSTRAP_SECRET) return err('forbidden', 403);
 
-  const done = await env.DB.prepare("SELECT value FROM app_meta WHERE key='bootstrap_completed'").first();
-  if (done) return err('already_bootstrapped', 409);
-
   const b = await body<any>(request);
   if (!b?.family_name || !b?.owner_name || !b?.device_name) return err('invalid_body');
   const platform = ['android','ios','other'].includes(b.platform) ? b.platform : 'other';
+  const done = await env.DB.prepare("SELECT value FROM app_meta WHERE key='bootstrap_completed'").first();
+
+  if (done) {
+    const owner = await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE role='owner' ORDER BY created_at ASC LIMIT 1`).first<any>();
+    if (!owner?.member_id || !owner?.family_id) return err('owner_not_found', 409);
+
+    const deviceId = crypto.randomUUID();
+    const token = randomToken(32);
+    const tokenHash = await sha256Hex(token);
+    const ts = now();
+
+    await env.DB.batch([
+      env.DB.prepare(`UPDATE push_tokens SET revoked_at=?1
+                      WHERE device_id IN (SELECT id FROM devices WHERE member_id=?2 AND revoked_at IS NULL)
+                        AND revoked_at IS NULL`).bind(ts, owner.member_id),
+      env.DB.prepare(`UPDATE devices SET revoked_at=?1,app_state='revoked'
+                      WHERE member_id=?2 AND revoked_at IS NULL`).bind(ts, owner.member_id),
+      env.DB.prepare(`INSERT INTO devices(id,family_id,member_id,display_name,platform,token_hash,created_at)
+                      VALUES(?1,?2,?3,?4,?5,?6,?7)`)
+        .bind(deviceId, owner.family_id, owner.member_id, String(b.device_name).slice(0,80), platform, tokenHash, ts),
+    ]);
+
+    return j({
+      ok: true,
+      recovered: true,
+      family_id: owner.family_id,
+      member_id: owner.member_id,
+      device_id: deviceId,
+      device_token: token,
+    }, 201);
+  }
+
   const familyId = crypto.randomUUID();
   const memberId = crypto.randomUUID();
   const deviceId = crypto.randomUUID();
