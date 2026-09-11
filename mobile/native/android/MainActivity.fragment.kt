@@ -18,6 +18,7 @@ import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
+import java.util.zip.ZipInputStream
 
 class MainActivity : FlutterActivity() {
     private val trackingChannelName = "savarona_ailem/tracking"
@@ -69,10 +70,12 @@ class MainActivity : FlutterActivity() {
                     val url = call.argument<String>("url")
                     val expectedSha256 = call.argument<String>("sha256")?.lowercase()
                     val versionCode = call.argument<Number>("versionCode")?.toLong()
-                    if (url.isNullOrBlank() || expectedSha256 == null || expectedSha256.length != 64 || versionCode == null) {
-                        result.error("invalid_args", "url/sha256/versionCode required", null)
+                    val packageType = call.argument<String>("packageType")?.lowercase() ?: "apk"
+                    if (url.isNullOrBlank() || expectedSha256 == null || expectedSha256.length != 64 ||
+                        versionCode == null || packageType !in setOf("apk", "zip")) {
+                        result.error("invalid_args", "url/sha256/versionCode/packageType invalid", null)
                     } else {
-                        downloadAndInstall(url, expectedSha256, versionCode, result)
+                        downloadAndInstall(url, expectedSha256, versionCode, packageType, result)
                     }
                 }
                 else -> result.notImplemented()
@@ -80,7 +83,13 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun downloadAndInstall(url: String, expectedSha256: String, versionCode: Long, result: MethodChannel.Result) {
+    private fun downloadAndInstall(
+        url: String,
+        expectedSha256: String,
+        versionCode: Long,
+        packageType: String,
+        result: MethodChannel.Result,
+    ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
             startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")))
             result.success("permission_required")
@@ -90,32 +99,24 @@ class MainActivity : FlutterActivity() {
         Thread {
             try {
                 val updatesDir = File(cacheDir, "updates").apply { mkdirs() }
-                val apk = File(updatesDir, "savarona-ailem-$versionCode.apk")
-                val digest = MessageDigest.getInstance("SHA-256")
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.instanceFollowRedirects = true
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 30_000
-                conn.setRequestProperty("User-Agent", "Savarona-Ailem-Updater/1")
-                conn.connect()
-                if (conn.responseCode !in 200..299) throw IllegalStateException("http_${conn.responseCode}")
-                conn.inputStream.use { input ->
-                    FileOutputStream(apk).use { output ->
-                        val buffer = ByteArray(64 * 1024)
-                        while (true) {
-                            val n = input.read(buffer)
-                            if (n <= 0) break
-                            digest.update(buffer, 0, n)
-                            output.write(buffer, 0, n)
-                        }
-                    }
+                val apk = File(updatesDir, "savarona-ailem-$versionCode.apk").apply { delete() }
+                val download = File(updatesDir, "savarona-ailem-$versionCode.$packageType").apply { delete() }
+                downloadToFile(url, download)
+
+                if (packageType == "zip") {
+                    extractFirstApk(download, apk)
+                    download.delete()
+                } else if (download.absolutePath != apk.absolutePath) {
+                    download.copyTo(apk, overwrite = true)
+                    download.delete()
                 }
-                conn.disconnect()
-                val actual = digest.digest().joinToString("") { "%02x".format(it) }
+
+                val actual = sha256(apk)
                 if (!actual.equals(expectedSha256, ignoreCase = true)) {
                     apk.delete()
                     throw SecurityException("sha256_mismatch")
                 }
+
                 runOnUiThread {
                     try {
                         val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
@@ -133,6 +134,72 @@ class MainActivity : FlutterActivity() {
                 runOnUiThread { result.error("update_failed", e.message ?: e.javaClass.simpleName, null) }
             }
         }.start()
+    }
+
+    private fun downloadToFile(url: String, output: File) {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        try {
+            conn.instanceFollowRedirects = true
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 60_000
+            conn.setRequestProperty("User-Agent", "Savarona-Ailem-Updater/2")
+            conn.connect()
+            if (conn.responseCode !in 200..299) throw IllegalStateException("http_${conn.responseCode}")
+            conn.inputStream.use { input ->
+                FileOutputStream(output).use { out ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val n = input.read(buffer)
+                        if (n <= 0) break
+                        total += n
+                        if (total > MAX_UPDATE_DOWNLOAD_BYTES) throw IllegalStateException("update_too_large")
+                        out.write(buffer, 0, n)
+                    }
+                }
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
+    private fun extractFirstApk(zipFile: File, apk: File) {
+        var found = false
+        ZipInputStream(zipFile.inputStream().buffered()).use { zip ->
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                if (!entry.isDirectory && entry.name.lowercase().endsWith(".apk")) {
+                    FileOutputStream(apk).use { out ->
+                        val buffer = ByteArray(64 * 1024)
+                        var total = 0L
+                        while (true) {
+                            val n = zip.read(buffer)
+                            if (n <= 0) break
+                            total += n
+                            if (total > MAX_APK_BYTES) throw IllegalStateException("apk_too_large")
+                            out.write(buffer, 0, n)
+                        }
+                    }
+                    found = true
+                    break
+                }
+                zip.closeEntry()
+            }
+        }
+        if (!found || !apk.isFile || apk.length() <= 0L) throw IllegalStateException("apk_missing_in_zip")
+    }
+
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n <= 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     override fun onResume() {
@@ -211,5 +278,7 @@ class MainActivity : FlutterActivity() {
         private const val REQUEST_FOREGROUND_LOCATION = 4201
         private const val REQUEST_BACKGROUND_LOCATION = 4202
         private const val REQUEST_NOTIFICATIONS = 4203
+        private const val MAX_UPDATE_DOWNLOAD_BYTES = 500L * 1024 * 1024
+        private const val MAX_APK_BYTES = 350L * 1024 * 1024
     }
 }
