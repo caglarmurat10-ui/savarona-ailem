@@ -10,6 +10,8 @@ on:
 jobs:
   android:
     runs-on: ubuntu-latest
+    env:
+      ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -18,21 +20,20 @@ jobs:
           flutter-version: '3.47.2'
           cache: true
       - run: python3 tools/bootstrap_mobile.py
-        env:
-          ANDROID_SIGNING_BUNDLE: ${{ secrets.ANDROID_SIGNING_BUNDLE }}
       - run: flutter pub get
         working-directory: mobile
       - run: flutter analyze
         working-directory: mobile
       - run: flutter test
         working-directory: mobile
-      - name: Build signed production APK
-        if: ${{ secrets.ANDROID_SIGNING_BUNDLE != '' }}
-        run: flutter build apk --release --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
-        working-directory: mobile
-      - name: Build debug validation APK
-        if: ${{ secrets.ANDROID_SIGNING_BUNDLE == '' }}
-        run: flutter build apk --debug --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
+      - name: Build Android APK
+        shell: bash
+        run: |
+          if [ -n "$ANDROID_SIGNING_BUNDLE" ]; then
+            flutter build apk --release --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
+          else
+            flutter build apk --debug --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
+          fi
         working-directory: mobile
       - uses: actions/upload-artifact@v4
         with:
