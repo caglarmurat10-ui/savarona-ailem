@@ -1,9 +1,10 @@
 {
-  "available": false,
-  "version_name": "0.3.0",
-  "version_code": 3,
-  "download_url": "",
-  "sha256": "",
-  "notes": "Güncel sürüm.",
+  "available": true,
+  "version_name": "0.3.1",
+  "version_code": 4,
+  "download_url": "https://drive.usercontent.google.com/download?id=1D92cpV_1UWuXFxjRcR4nUnTquw-ZrGwC&export=download&confirm=t",
+  "sha256": "bdb5a245fb3a17f137e1ad0f918ceacd0da58b51e4e08b0c559356805deed93e",
+  "package_type": "zip",
+  "notes": "Canlı kişi takibi ve Drive üzerinden otomatik Android güncelleme desteği.",
   "mandatory": false
 }
