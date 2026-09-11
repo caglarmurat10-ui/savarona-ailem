@@ -1,10 +1,10 @@
 {
   "available": true,
-  "version_name": "0.3.2",
-  "version_code": 5,
-  "download_url": "https://drive.usercontent.google.com/download?id=1FqVZHiv9OO-RFAdSYSCqjVCHkbKNMUyw&export=download&confirm=t",
-  "sha256": "bf95596bd0d4532d63bad93436e6d619cfabc0036be3710a6c83eacf261a263d",
+  "version_name": "0.3.3",
+  "version_code": 6,
+  "download_url": "https://drive.usercontent.google.com/download?id=14JhT2EcALsTVMdHt2BAyN7rlEWAe0xk8&export=download&confirm=t",
+  "sha256": "a5c862546b0cdd7af90bd075a7ae022b8a418f52a1ae26e161932fb0d082d8c6",
   "package_type": "zip",
-  "notes": "Aynı kişi listede ve haritada tek kez gösterilir; en güncel canlı konum kullanılır.",
+  "notes": "Android arka plan takibinde GPS'ten gelen geçersiz sayısal değerlerin JSONException oluşturması engellendi; eski bozuk kuyruk kayıtları otomatik atlanır.",
   "mandatory": false
 }
