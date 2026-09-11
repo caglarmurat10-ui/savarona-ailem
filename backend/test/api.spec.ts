@@ -40,13 +40,25 @@ describe('family journey', () => {
     expect(res.status).toBe(403);
   });
 
-  it('refuses a second bootstrap once one has completed', async () => {
+  it('securely recovers the existing owner onto a replacement device', async () => {
+    const previous = owner;
     const res = await SELF.fetch(`${BASE}/v1/admin/bootstrap`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-bootstrap-secret': BOOTSTRAP_SECRET },
-      body: JSON.stringify({ family_name: 'Another', owner_name: 'B', device_name: 'C' }),
+      body: JSON.stringify({ family_name: 'Ignored During Recovery', owner_name: 'Ignored', device_name: 'Replacement Owner Phone', platform: 'android' }),
     });
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(201);
+    const recovered = await res.json<any>();
+    expect(recovered.recovered).toBe(true);
+    expect(recovered.family_id).toBe(previous.family_id);
+    expect(recovered.member_id).toBe(previous.member_id);
+    expect(recovered.device_id).not.toBe(previous.device_id);
+
+    const oldToken = await SELF.fetch(`${BASE}/v1/family/snapshot`, { headers: authHeaders(previous.device_token) });
+    expect(oldToken.status).toBe(401);
+
+    owner = recovered;
+    ownerSeq = 0;
   });
 
   it('member endpoints require a bearer token', async () => {
