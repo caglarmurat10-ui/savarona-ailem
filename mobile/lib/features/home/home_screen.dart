@@ -33,6 +33,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   PermissionHealth? _trackingHealth;
   LiveConnectionState _connection = LiveConnectionState.connecting;
 
+  List<MemberLocation> get _visibleMembers {
+    final byName = <String, MemberLocation>{};
+    for (final member in _members) {
+      final key = member.name.trim().toLowerCase();
+      final current = byName[key];
+      if (current == null || _memberFreshness(member) > _memberFreshness(current)) {
+        byName[key] = member;
+      }
+    }
+    return byName.values.toList(growable: false);
+  }
+
+  int _memberFreshness(MemberLocation member) {
+    final seen = member.lastSeenAt?.millisecondsSinceEpoch ?? -1;
+    final location = member.locationAt?.millisecondsSinceEpoch ?? -1;
+    return seen > location ? seen : location;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -273,6 +291,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final connectionBanner = _connectionBanner();
     final trackingBanner = _trackingBanner();
+    final visibleMembers = _visibleMembers;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Savarona Ailem'),
@@ -294,14 +313,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         Expanded(
           flex: 5,
           child: LiveFamilyMap(
-            members: _members,
+            members: visibleMembers,
             onMemberTap: _openMember,
           ),
         ),
         Expanded(flex: 4, child: ListView.builder(
-          itemCount: _members.length,
+          itemCount: visibleMembers.length,
           itemBuilder: (context, i) {
-            final m = _members[i];
+            final m = visibleMembers[i];
             final permissionText = m.permissionState == 'permission_lost' ? ' • Konum izni kapalı' : '';
             return ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
