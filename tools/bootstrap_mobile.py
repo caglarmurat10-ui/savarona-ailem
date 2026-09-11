@@ -5,12 +5,17 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];MOBILE=ROOT/'mobile';NATIVE=MOBILE/'native'
 def run(*args:str,cwd:Path|None=None)->None: subprocess.run(args,cwd=cwd,check=True)
 def patch_android()->None:
- m=MOBILE/'android/app/src/main/AndroidManifest.xml';text=m.read_text();perms=['android.permission.INTERNET','android.permission.ACCESS_FINE_LOCATION','android.permission.ACCESS_COARSE_LOCATION','android.permission.ACCESS_BACKGROUND_LOCATION','android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_LOCATION','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED'];root_end=text.find('>')+1
+ m=MOBILE/'android/app/src/main/AndroidManifest.xml';text=m.read_text();perms=['android.permission.INTERNET','android.permission.ACCESS_FINE_LOCATION','android.permission.ACCESS_COARSE_LOCATION','android.permission.ACCESS_BACKGROUND_LOCATION','android.permission.FOREGROUND_SERVICE','android.permission.FOREGROUND_SERVICE_LOCATION','android.permission.POST_NOTIFICATIONS','android.permission.RECEIVE_BOOT_COMPLETED','android.permission.REQUEST_INSTALL_PACKAGES'];root_end=text.find('>')+1
  for p in perms:
   if p not in text:text=text[:root_end]+f'\n    <uses-permission android:name="{p}" />'+text[root_end:];root_end=text.find('>')+1
- text=re.sub(r'android:label="[^"]*"','android:label="Savarona Ailem"',text,count=1);service='''\n        <service android:name=".LocationTrackingService" android:exported="false" android:foregroundServiceType="location" />\n        <receiver android:name=".BootReceiver" android:enabled="true" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter></receiver>\n'''
+ text=re.sub(r'android:label="[^"]*"','android:label="Savarona Ailem"',text,count=1)
+ service='''\n        <service android:name=".LocationTrackingService" android:exported="false" android:foregroundServiceType="location" />\n        <receiver android:name=".BootReceiver" android:enabled="true" android:exported="false"><intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter></receiver>\n'''
  if '.LocationTrackingService' not in text:text=text.replace('</application>',service+'    </application>')
+ provider='''\n        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true">\n            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/savarona_update_paths" />\n        </provider>\n'''
+ if '${applicationId}.fileprovider' not in text:text=text.replace('</application>',provider+'    </application>')
  m.write_text(text)
+ xml_dir=MOBILE/'android/app/src/main/res/xml';xml_dir.mkdir(parents=True,exist_ok=True)
+ (xml_dir/'savarona_update_paths.xml').write_text('<?xml version="1.0" encoding="utf-8"?>\n<paths xmlns:android="http://schemas.android.com/apk/res/android">\n    <cache-path name="updates" path="updates/" />\n</paths>\n')
  k=MOBILE/'android/app/src/main/kotlin/com/savarona/ailem';k.mkdir(parents=True,exist_ok=True);gm=next((MOBILE/'android/app/src/main/kotlin').rglob('MainActivity.kt'),None)
  if gm and gm.parent!=k:gm.unlink(missing_ok=True)
  shutil.copy2(NATIVE/'android/MainActivity.fragment.kt',k/'MainActivity.kt')
@@ -33,7 +38,7 @@ def patch_ios()->None:
  ad=MOBILE/'ios/Runner/AppDelegate.swift';text=ad.read_text();imports='import Flutter\nimport UIKit\nimport Foundation\nimport CoreLocation\nimport Security\n';text=re.sub(r'^(?:import .*\n)+',imports,text);needle='GeneratedPluginRegistrant.register(with: self)';reg='''GeneratedPluginRegistrant.register(with: self)\n    if let controller = window?.rootViewController as? FlutterViewController {\n      TrackingPlugin.register(with: controller.engine.binaryMessenger)\n    }\n    LocationTracker.shared.restoreIfAuthorized()'''
  if 'TrackingPlugin.register' not in text:text=text.replace(needle,reg)
  src=['KeychainCredentialStore.swift','TrackingStatusStore.swift','LocationUploadQueue.swift','LocationTracker.swift','TrackingPlugin.swift'];marker='// === SAVARONA_NATIVE_TRACKING_BUNDLE ==='
- if marker in text:text=text.split(marker,1)[0].rstrip()+'\n'
+ if marker in text:text.split(marker,1)[0].rstrip()+'\n'
  bundle='\n\n'.join(strip_swift_imports((NATIVE/'ios'/n).read_text()) for n in src);ad.write_text(text.rstrip()+f'\n\n{marker}\n{bundle}\n')
  plist=MOBILE/'ios/Runner/Info.plist';p=plist.read_text();frag='\n'.join(line for line in (NATIVE/'ios/Info.plist.fragment.xml').read_text().splitlines() if not line.strip().startswith('<!--'))
  if 'NSLocationAlwaysAndWhenInUseUsageDescription' not in p:p=p.replace('</dict>',frag+'\n</dict>')
