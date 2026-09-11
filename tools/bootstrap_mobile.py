@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse,re,shutil,subprocess,tempfile
+import argparse,base64,json,os,re,shutil,subprocess,tempfile
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];MOBILE=ROOT/'mobile';NATIVE=MOBILE/'native'
 def run(*args:str,cwd:Path|None=None)->None: subprocess.run(args,cwd=cwd,check=True)
@@ -17,6 +17,16 @@ def patch_android()->None:
  for n in ['LocationTrackingService.kt','TrackingStatusStore.kt','TrackingUploadQueue.kt','SecureCredentialStore.kt','BootReceiver.kt']:shutil.copy2(NATIVE/'android'/n,k/n)
  gfile=MOBILE/'android/app/build.gradle.kts';g=gfile.read_text();dep='implementation("com.google.android.gms:play-services-location:21.3.0")'
  if dep not in g:g+=f'\n\ndependencies {{\n    {dep}\n}}\n'
+ signing_bundle=os.environ.get('ANDROID_SIGNING_BUNDLE','').strip()
+ if signing_bundle:
+  cfg=json.loads(signing_bundle);ks_b64=str(cfg.get('keystore_base64',''));password=str(cfg.get('password',''));alias=str(cfg.get('alias','savarona-ailem'))
+  if not ks_b64 or not password:raise SystemExit('ANDROID_SIGNING_BUNDLE is missing keystore_base64/password')
+  (MOBILE/'android/app/savarona-release.p12').write_bytes(base64.b64decode(ks_b64))
+  (MOBILE/'android/key.properties').write_text(f'storePassword={password}\nkeyPassword={password}\nkeyAlias={alias}\nstoreFile=savarona-release.p12\n')
+  marker='// SAVARONA_RELEASE_SIGNING'
+  signing=f'''\n    {marker}\n    val savaronaSigning = java.util.Properties().apply {{\n        rootProject.file("key.properties").inputStream().use {{ load(it) }}\n    }}\n    signingConfigs {{\n        create("savaronaRelease") {{\n            storeFile = file(savaronaSigning["storeFile"] as String)\n            storePassword = savaronaSigning["storePassword"] as String\n            keyAlias = savaronaSigning["keyAlias"] as String\n            keyPassword = savaronaSigning["keyPassword"] as String\n        }}\n    }}\n'''
+  if marker not in g:g=g.replace('android {','android {'+signing,1)
+  g=g.replace('signingConfig = signingConfigs.getByName("debug")','signingConfig = signingConfigs.getByName("savaronaRelease")')
  gfile.write_text(g)
 def strip_swift_imports(text:str)->str:return '\n'.join(line for line in text.splitlines() if not line.startswith('import '))
 def patch_ios()->None:
