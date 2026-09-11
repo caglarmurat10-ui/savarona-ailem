@@ -1,0 +1,149 @@
+name: testflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-upload:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      BUNDLE_ID: com.savarona.ailem
+      PROFILE_NAME: ${{ vars.APPSTORE_PROFILE_NAME || 'AppStore com.savarona.ailem' }}
+      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      API_BASE_URL: https://savarona-ailem-api.caglarmurat10.workers.dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Apple configuration
+        env:
+          ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          CERT_BASE64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_TEAM_ID ISSUER_ID API_KEY_ID API_PRIVATE_KEY CERT_BASE64 CERT_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required Apple/GitHub setting: $name"
+              exit 1
+            fi
+          done
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.2'
+          cache: true
+
+      - name: Generate native Android/iOS shells
+        run: python3 tools/bootstrap_mobile.py
+
+      - name: Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Import Apple Distribution certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Download App Store provisioning profile
+        uses: apple-actions/download-provisioning-profiles@v6
+        with:
+          bundle-id: com.savarona.ailem
+          profile-type: IOS_APP_STORE
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Prepare Flutter release build
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER=$((1000 + GITHUB_RUN_NUMBER))
+          echo "SAVARONA_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          flutter build ios --release --no-codesign \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define="API_BASE_URL=$API_BASE_URL"
+
+      - name: Archive signed iOS app
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          rm -rf build/ios/archive build/ios/ipa
+          mkdir -p build/ios/archive build/ios/ipa
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            archive \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY='Apple Distribution' \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+
+      - name: Create export options
+        working-directory: mobile
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>teamID</key>
+            <string>$APPLE_TEAM_ID</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_NAME</string>
+            </dict>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          plutil -lint ios/ExportOptions.plist
+
+      - name: Export IPA
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          xcodebuild -exportArchive \
+            -archivePath build/ios/archive/Runner.xcarchive \
+            -exportPath build/ios/ipa \
+            -exportOptionsPlist ios/ExportOptions.plist
+          IPA_PATH="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)"
+          test -n "$IPA_PATH"
+          echo "IPA_PATH=mobile/$IPA_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v4
+        with:
+          app-path: ${{ env.IPA_PATH }}
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          uses-non-exempt-encryption: 'false'
+          wait-for-processing: 'true'
+
+      - name: Keep signed IPA artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: savarona-ailem-testflight-${{ env.SAVARONA_BUILD_NUMBER }}
+          path: mobile/build/ios/ipa/*.ipa
+          retention-days: 7
