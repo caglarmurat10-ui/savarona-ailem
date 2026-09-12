@@ -12,5 +12,8 @@
     "@cloudflare/workers-types": "latest",
     "typescript": "latest",
     "wrangler": "latest"
+  },
+  "dependencies": {
+    "jose": "^6.2.12"
   }
 }

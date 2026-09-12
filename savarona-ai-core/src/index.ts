@@ -1,3 +1,5 @@
+import { createRemoteJWKSet, jwtVerify } from "jose";
+
 type RiskLevel = "read_only" | "low" | "high";
 
 type Project = {
@@ -54,6 +56,27 @@ function projectById(id: string): Project | undefined {
 function isAuthorized(request: Request, env: Env): boolean {
   if (!env.SAVARONA_ADMIN_TOKEN) return false;
   return request.headers.get("authorization") === `Bearer ${env.SAVARONA_ADMIN_TOKEN}`;
+}
+const GITHUB_OIDC_JWKS = createRemoteJWKSet(
+  new URL("https://token.actions.githubusercontent.com/.well-known/jwks")
+);
+
+async function isGitHubActionsAuthorized(request: Request): Promise<boolean> {
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer ")) return false;
+  const token = authorization.slice("Bearer ".length);
+  try {
+    const { payload } = await jwtVerify(token, GITHUB_OIDC_JWKS, {
+      issuer: "https://token.actions.githubusercontent.com",
+      audience: "savarona-ai-core"
+    });
+    const workflowRef = typeof payload.workflow_ref === "string" ? payload.workflow_ref : "";
+    return payload.repository === "caglarmurat10-ui/savarona-ailem"
+      && (payload.event_name === "schedule" || payload.event_name === "workflow_dispatch")
+      && workflowRef.includes("/.github/workflows/savarona-ai-operations.yml@");
+  } catch {
+    return false;
+  }
 }
 
 async function parseBody<T>(request: Request): Promise<T> {
@@ -245,8 +268,12 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return responseJson({ projects: PROJECTS });
   }
 
-  if (request.method === "POST" && !isAuthorized(request, env)) {
-    return responseJson({ error: "unauthorized" }, 401);
+  if (request.method === "POST") {
+    const internalRequest = url.pathname.startsWith("/internal/");
+    const authorized = internalRequest
+      ? isAuthorized(request, env) || await isGitHubActionsAuthorized(request)
+      : isAuthorized(request, env);
+    if (!authorized) return responseJson({ error: "unauthorized" }, 401);
   }
 
   if (request.method === "POST" && url.pathname === "/events") {

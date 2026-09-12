@@ -6,17 +6,22 @@ on:
     - cron: "*/15 * * * *"
     - cron: "15 0 * * *"
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   operate:
     runs-on: ubuntu-latest
     steps:
+      - name: Get GitHub OIDC token
+        id: oidc
+        run: |
+          TOKEN=$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=savarona-ai-core" | python -c "import json,sys; print(json.load(sys.stdin)['value'])")
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
       - name: Health audit
         if: github.event_name == 'workflow_dispatch' || github.event.schedule == '*/15 * * * *'
-        env:
-          TOKEN: ${{ secrets.SAVARONA_ADMIN_TOKEN }}
-        run: curl --fail --silent --show-error -X POST -H "Authorization: Bearer $TOKEN" https://savarona-ai-core.caglarmurat10.workers.dev/internal/health-audit
+        run: curl -fsS -X POST -H "Authorization: Bearer ${{ steps.oidc.outputs.token }}" https://savarona-ai-core.caglarmurat10.workers.dev/internal/health-audit
       - name: Daily self review
         if: github.event.schedule == '15 0 * * *'
-        env:
-          TOKEN: ${{ secrets.SAVARONA_ADMIN_TOKEN }}
-        run: curl --fail --silent --show-error -X POST -H "Authorization: Bearer $TOKEN" https://savarona-ai-core.caglarmurat10.workers.dev/internal/self-review
+        run: curl -fsS -X POST -H "Authorization: Bearer ${{ steps.oidc.outputs.token }}" https://savarona-ai-core.caglarmurat10.workers.dev/internal/self-review
