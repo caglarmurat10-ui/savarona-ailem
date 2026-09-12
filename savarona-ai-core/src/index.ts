@@ -308,6 +308,24 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return responseJson({ project, risk: "read_only" satisfies RiskLevel, review });
   }
 
+  if (request.method === "POST" && url.pathname === "/internal/tick") {
+    await auditHealth(env);
+    let selfReview = "unconfigured";
+    if (env.DB && ((env.OPENAI_API_KEY && env.OPENAI_MODEL) || (env.ANTHROPIC_API_KEY && env.ANTHROPIC_MODEL))) {
+      const existing = await env.DB.prepare(
+        `SELECT id FROM improvement_proposals
+         WHERE scope = 'ecosystem' AND created_at >= date('now')
+         LIMIT 1`
+      ).first();
+      if (!existing) {
+        await dailySelfReview(env);
+        selfReview = "completed";
+      } else {
+        selfReview = "already-completed-today";
+      }
+    }
+    return responseJson({ ok: true, task: "tick", selfReview }, 202);
+  }
   if (request.method === "POST" && url.pathname === "/internal/health-audit") {
     await auditHealth(env);
     return responseJson({ ok: true, task: "health-audit" }, 202);
