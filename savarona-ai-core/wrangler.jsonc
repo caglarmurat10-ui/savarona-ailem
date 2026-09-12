@@ -8,9 +8,6 @@
     "OPENAI_MODEL": "",
     "ANTHROPIC_MODEL": ""
   },
-  "triggers": {
-    "crons": ["*/15 * * * *", "15 2 * * *"]
-  },
   "d1_databases": [
     {
       "binding": "DB",

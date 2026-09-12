@@ -281,6 +281,15 @@ async function handleRequest(request: Request, env: Env): Promise<Response> {
     return responseJson({ project, risk: "read_only" satisfies RiskLevel, review });
   }
 
+  if (request.method === "POST" && url.pathname === "/internal/health-audit") {
+    await auditHealth(env);
+    return responseJson({ ok: true, task: "health-audit" }, 202);
+  }
+
+  if (request.method === "POST" && url.pathname === "/internal/self-review") {
+    await dailySelfReview(env);
+    return responseJson({ ok: true, task: "self-review" }, 202);
+  }
   return responseJson({ error: "not_found" }, 404);
 }
 
