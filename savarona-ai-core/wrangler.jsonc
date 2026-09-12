@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "savarona-ai-core",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-12",
+  "vars": {
+    "APP_ENV": "production",
+    "OPENAI_MODEL": "",
+    "ANTHROPIC_MODEL": ""
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *", "15 2 * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}
