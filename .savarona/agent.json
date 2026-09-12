@@ -1,0 +1,14 @@
+{
+  "protocol": "savarona-agent/0.1",
+  "project_id": "family",
+  "name": "Savarona Ailem",
+  "environment": "production",
+  "version_source": "git",
+  "capabilities": ["repo", "health", "errors"],
+  "risk_profile": "critical",
+  "automation": {
+    "read_only": "automatic",
+    "low_risk_changes": "branch_test_pr",
+    "high_risk_changes": "human_approval_required"
+  }
+}
