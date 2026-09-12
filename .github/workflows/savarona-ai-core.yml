@@ -1,0 +1,29 @@
+name: Savarona AI Core CI
+
+on:
+  push:
+    branches:
+      - agent/savarona-ai-core-bootstrap
+    paths:
+      - "savarona-ai-core/**"
+      - ".github/workflows/savarona-ai-core.yml"
+  pull_request:
+    paths:
+      - "savarona-ai-core/**"
+      - ".github/workflows/savarona-ai-core.yml"
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: savarona-ai-core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: savarona-ai-core/package.json
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
