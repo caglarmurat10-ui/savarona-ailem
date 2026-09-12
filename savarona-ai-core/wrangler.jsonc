@@ -11,6 +11,13 @@
   "triggers": {
     "crons": ["*/15 * * * *", "15 2 * * *"]
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "savarona-ai-core",
+      "database_id": "ffc99cd3-c2d4-49ca-925d-54d10607c9a2"
+    }
+  ],
   "observability": {
     "enabled": true
   }

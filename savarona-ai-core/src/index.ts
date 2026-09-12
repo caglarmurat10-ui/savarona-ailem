@@ -52,7 +52,7 @@ function projectById(id: string): Project | undefined {
 }
 
 function isAuthorized(request: Request, env: Env): boolean {
-  if (!env.SAVARONA_ADMIN_TOKEN) return true;
+  if (!env.SAVARONA_ADMIN_TOKEN) return false;
   return request.headers.get("authorization") === `Bearer ${env.SAVARONA_ADMIN_TOKEN}`;
 }
 
