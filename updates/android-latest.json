@@ -1,10 +1,10 @@
 {
   "available": true,
-  "version_name": "0.3.4",
-  "version_code": 7,
-  "download_url": "https://drive.usercontent.google.com/download?id=1Q5AQiM2mICp0RL2b_joBBDcZk4dZdaBu&export=download&confirm=t",
-  "sha256": "4657e3b6195961fb6261665e3574f255a1cce8e36740209616ad978d35e9d8a9",
+  "version_name": "0.3.5",
+  "version_code": 8,
+  "download_url": "https://drive.usercontent.google.com/download?id=1go0PUiZ3U2p045PtWglFGbwUbBpSK4b7&export=download&confirm=t",
+  "sha256": "91aa9d550ef13147157377bc71fd225f39d95dcf49f2ca770eec1815d740efa4",
   "package_type": "zip",
-  "notes": "Aile listesi uygulama açıkken 30 saniyede bir ve uygulama tekrar öne geldiğinde yenilenir; revoke edilen eski kullanıcılar ekrandan otomatik kalkar ve durumlar güncel kalır.",
+  "notes": "Canlı konum güvenilirliği artırıldı: Huawei uyumlu Android GPS/Network yedeği eklendi, 90 saniye yeni konum gelmezse konum sağlayıcıları otomatik yeniden başlatılır, eski GPS örnekleri reddedilir ve Canlı durumu gerçek konum zamanına göre gösterilir.",
   "mandatory": false
 }
