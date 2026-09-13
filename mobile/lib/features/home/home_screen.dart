@@ -224,8 +224,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   String age(MemberLocation m) {
-    final t = m.lastSeenAt;
-    if (t == null) return 'Henüz veri yok';
+    final t = m.locationAt ?? m.lastSeenAt;
+    if (t == null) return 'Henüz konum yok';
     final s = DateTime.now().difference(t).inSeconds;
     if (s < 10) return 'Canlı';
     if (s < 90) return '$s sn önce';

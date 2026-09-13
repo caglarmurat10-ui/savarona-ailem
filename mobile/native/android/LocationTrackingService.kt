@@ -9,6 +9,8 @@ import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.BatteryManager
 import android.os.IBinder
 import androidx.core.app.ActivityCompat
@@ -27,16 +29,22 @@ private enum class SpeedProfile(val intervalMs: Long, val minUpdateIntervalMs: L
 
 class LocationTrackingService : Service() {
     private lateinit var fused: FusedLocationProviderClient
+    private lateinit var locationManager: LocationManager
+    private lateinit var nativeListener: LocationListener
     private lateinit var callback: LocationCallback
     private lateinit var queue: TrackingUploadQueue
     private var currentProfile: SpeedProfile? = null
     private var flushThread: Thread? = null
     @Volatile private var running = false
     private var lastHeartbeatAt = 0L
+    @Volatile private var lastLocationCallbackAt = 0L
+    @Volatile private var lastAcceptedCapturedAt = 0L
+    @Volatile private var lastProviderRestartAt = 0L
 
     override fun onCreate() {
         super.onCreate()
         fused = LocationServices.getFusedLocationProviderClient(this)
+        locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
         queue = TrackingUploadQueue(this)
         ensureChannel()
         callback = object : LocationCallback() {
@@ -45,6 +53,7 @@ class LocationTrackingService : Service() {
                 onNewLocation(location)
             }
         }
+        nativeListener = LocationListener { location -> onNewLocation(location) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -68,6 +77,7 @@ class LocationTrackingService : Service() {
         }
         TrackingStatusStore.setPermissionState(this, if (hasBackgroundPermission()) "granted_always" else "granted_when_in_use")
 
+        lastLocationCallbackAt = System.currentTimeMillis()
         requestUpdates(SpeedProfile.WALKING)
         TrackingStatusStore.setTrackingActive(this, true)
         startFlushLoop()
@@ -75,22 +85,43 @@ class LocationTrackingService : Service() {
     }
 
     @Suppress("MissingPermission")
-    private fun requestUpdates(profile: SpeedProfile) {
-        if (currentProfile == profile) return
+    private fun requestUpdates(profile: SpeedProfile, force: Boolean = false) {
+        if (currentProfile == profile && !force) return
         if (!hasLocationPermission()) return
         currentProfile = profile
         val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, profile.intervalMs)
             .setMinUpdateIntervalMillis(profile.minUpdateIntervalMs)
             .setMinUpdateDistanceMeters(profile.minDistanceM)
             .build()
-        fused.removeLocationUpdates(callback)
-        fused.requestLocationUpdates(request, callback, mainLooper)
+        try {
+            fused.removeLocationUpdates(callback)
+            fused.requestLocationUpdates(request, callback, mainLooper)
+        } catch (_: Exception) { }
+        requestNativeUpdates(profile)
+    }
+
+    @Suppress("MissingPermission")
+    private fun requestNativeUpdates(profile: SpeedProfile) {
+        try { locationManager.removeUpdates(nativeListener) } catch (_: Exception) { }
+        for (provider in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)) {
+            try {
+                if (locationManager.isProviderEnabled(provider)) {
+                    locationManager.requestLocationUpdates(provider, profile.intervalMs, profile.minDistanceM, nativeListener, mainLooper)
+                }
+            } catch (_: Exception) { }
+        }
     }
 
     private fun onNewLocation(location: android.location.Location) {
+        val nowMs = System.currentTimeMillis()
         val lat = location.latitude
         val lng = location.longitude
+        val capturedAt = location.time.takeIf { it > 0L } ?: nowMs
         if (!lat.isFinite() || !lng.isFinite() || lat !in -90.0..90.0 || lng !in -180.0..180.0) return
+        if (capturedAt < nowMs - MAX_LOCATION_AGE_MS) return
+        if (capturedAt <= lastAcceptedCapturedAt) return
+        lastLocationCallbackAt = nowMs
+        lastAcceptedCapturedAt = capturedAt
         val speed = if (location.hasSpeed()) location.speed.toDouble().takeIf { it.isFinite() && it >= 0.0 } else null
         val profile = when {
             speed != null && speed >= 8.0 -> SpeedProfile.VEHICLE
@@ -101,7 +132,7 @@ class LocationTrackingService : Service() {
 
         val sample = LocationSample(
             sequenceNo = TrackingStatusStore.nextSequenceNo(this),
-            capturedAt = location.time,
+            capturedAt = capturedAt,
             lat = lat,
             lng = lng,
             accuracyM = if (location.hasAccuracy()) location.accuracy.toDouble().takeIf { it.isFinite() && it >= 0.0 } else null,
@@ -138,6 +169,7 @@ class LocationTrackingService : Service() {
                     TrackingStatusStore.setPermissionState(this, "permission_lost")
                     TrackingStatusStore.setTrackingActive(this, false)
                     fused.removeLocationUpdates(callback)
+                    try { locationManager.removeUpdates(nativeListener) } catch (_: Exception) { }
                     currentProfile = null
                     updateNotification("Konum izni kapatıldı — paylaşım duraklatıldı")
                     Thread.sleep(10_000L)
@@ -147,6 +179,10 @@ class LocationTrackingService : Service() {
                     requestUpdates(SpeedProfile.WALKING)
                     TrackingStatusStore.setTrackingActive(this, true)
                     updateNotification("Canlı konum paylaşımı aktif")
+                } else if (nowMs - lastLocationCallbackAt >= LOCATION_WATCHDOG_MS && nowMs - lastProviderRestartAt >= PROVIDER_RESTART_COOLDOWN_MS) {
+                    lastProviderRestartAt = nowMs
+                    requestUpdates(currentProfile ?: SpeedProfile.WALKING, force = true)
+                    updateNotification("Konum sinyali yenileniyor…")
                 }
                 val item = queue.peekOldest()
                 if (item == null) {
@@ -235,6 +271,7 @@ class LocationTrackingService : Service() {
     override fun onDestroy() {
         running = false
         fused.removeLocationUpdates(callback)
+        try { locationManager.removeUpdates(nativeListener) } catch (_: Exception) { }
         TrackingStatusStore.setTrackingActive(this, false)
         TrackingStatusStore.setForegroundRunning(this, false)
         super.onDestroy()
@@ -268,6 +305,9 @@ class LocationTrackingService : Service() {
         const val EXTRA_API_BASE_URL = "apiBaseUrl"
         const val EXTRA_DEVICE_TOKEN = "deviceToken"
         const val HEARTBEAT_INTERVAL_MS = 30_000L
+        const val LOCATION_WATCHDOG_MS = 90_000L
+        const val PROVIDER_RESTART_COOLDOWN_MS = 60_000L
+        const val MAX_LOCATION_AGE_MS = 120_000L
 
         fun queuedCount(context: Context): Int = TrackingUploadQueue(context).count()
     }
