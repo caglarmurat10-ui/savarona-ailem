@@ -1,0 +1,57 @@
+name: tf-apple-bootstrap
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download one-time envelope key
+        uses: actions/download-artifact@v4
+        with:
+          name: tf-envelope-key-34874716867
+          path: .tfkey
+          github-token: ${{ github.token }}
+          run-id: 34874716867
+      - name: Download encrypted credentials
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download tf-envelope-20260914 -p payload.enc -p keyblob.enc -D .
+      - name: Decrypt credential envelope
+        run: |
+          set -euo pipefail
+          openssl pkeyutl -decrypt -inkey .tfkey/private.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in keyblob.enc -out keyblob.txt
+          mapfile -t K < keyblob.txt
+          openssl enc -d -aes-256-cbc -K "${K[0]}" -iv "${K[1]}" -in payload.enc -out payload.zip
+          mkdir -p .tfsecrets
+          unzip -q payload.zip -d .tfsecrets
+          rm -f keyblob.txt payload.zip payload.enc keyblob.enc
+      - name: Install Apple API client dependencies
+        run: python3 -m pip install --quiet pyjwt cryptography
+      - name: Resolve certificate serial
+        run: |
+          set -euo pipefail
+          PWD=$(cat .tfsecrets/p12-password.txt)
+          SERIAL=$(openssl pkcs12 -in .tfsecrets/distribution.p12 -clcerts -nokeys -passin pass:"$PWD" 2>/dev/null | openssl x509 -noout -serial | cut -d= -f2)
+          echo "APPLE_CERT_SERIAL=$SERIAL" >> "$GITHUB_ENV"
+          echo "::add-mask::$PWD"
+      - name: Create Apple records and provisioning profile
+        env:
+          TF_SECRETS_DIR: .tfsecrets
+          TF_PROFILE_OUT: Savarona_Ailem_AppStore.mobileprovision
+        run: python3 tools/apple_bootstrap.py
+      - name: Upload provisioning profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: savarona-ailem-appstore-profile
+          path: Savarona_Ailem_AppStore.mobileprovision
+          retention-days: 1
+      - name: Remove decrypted credentials
+        if: always()
+        run: rm -rf .tfsecrets .tfkey
