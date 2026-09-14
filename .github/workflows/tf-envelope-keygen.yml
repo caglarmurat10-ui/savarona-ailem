@@ -1,0 +1,25 @@
+name: tf-envelope-keygen
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keygen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate one-time envelope key
+        run: |
+          set -euo pipefail
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out private.pem
+          openssl pkey -in private.pem -pubout -out public.pem
+      - name: Upload one-time envelope key
+        uses: actions/upload-artifact@v4
+        with:
+          name: tf-envelope-key-${{ github.run_id }}
+          path: |
+            private.pem
+            public.pem
+          retention-days: 1
