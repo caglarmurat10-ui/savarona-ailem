@@ -12,8 +12,7 @@ jobs:
     timeout-minutes: 45
     env:
       BUNDLE_ID: com.savarona.ailem
-      PROFILE_NAME: ${{ vars.APPSTORE_PROFILE_NAME || 'AppStore com.savarona.ailem' }}
-      APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      APPLE_TEAM_ID: C8F9Y25AS2
       API_BASE_URL: https://savarona-ailem-api.caglarmurat10.workers.dev
 
     steps:
@@ -63,6 +62,21 @@ jobs:
           api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
+      - name: Resolve downloaded provisioning profile
+        run: |
+          set -euo pipefail
+          FOUND=""
+          for p in "$HOME/Library/MobileDevice/Provisioning Profiles"/*.mobileprovision; do
+            [ -f "$p" ] || continue
+            security cms -D -i "$p" > /tmp/savarona-profile.plist
+            APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /tmp/savarona-profile.plist 2>/dev/null || true)
+            if [[ "$APP_ID" == *".$BUNDLE_ID" ]]; then
+              FOUND=$(/usr/libexec/PlistBuddy -c 'Print :Name' /tmp/savarona-profile.plist)
+              break
+            fi
+          done
+          test -n "$FOUND"
+          echo "PROFILE_NAME=$FOUND" >> "$GITHUB_ENV"
       - name: Prepare Flutter release build
         working-directory: mobile
         run: |
@@ -147,3 +161,4 @@ jobs:
           name: savarona-ailem-testflight-${{ env.SAVARONA_BUILD_NUMBER }}
           path: mobile/build/ios/ipa/*.ipa
           retention-days: 7
+
