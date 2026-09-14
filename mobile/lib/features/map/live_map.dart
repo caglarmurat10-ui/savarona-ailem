@@ -21,6 +21,9 @@ class LiveFamilyMap extends StatelessWidget {
           urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
           userAgentPackageName: 'com.savarona.ailem',
         ),
+        SimpleAttributionWidget(
+          source: const Text('OpenStreetMap contributors'),
+        ),
         MarkerLayer(
           markers: [
             for (final m in located)
