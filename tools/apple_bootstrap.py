@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 import base64,json,os,time,urllib.parse,urllib.request,urllib.error
 from pathlib import Path
 import jwt
@@ -32,10 +32,10 @@ if not bundle:
 else: print('BUNDLE_ID_EXISTS='+bundle['id'])
 
 app=first(f'/apps?filter%5BbundleId%5D={bundle_q}&limit=1')
-if not app:
-    _,j=req('POST','/apps',{'data':{'type':'apps','attributes':{'bundleId':META['bundle_id'],'name':'Savarona Ailem','primaryLocale':'tr','sku':'savarona-ailem-ios'}}})
-    app=j['data']; print('APP_CREATED='+app['id'])
-else: print('APP_EXISTS='+app['id'])
+if app:
+    print('APP_EXISTS='+app['id'])
+else:
+    print('APP_RECORD_MISSING_MANUAL')
 
 serial=os.environ['APPLE_CERT_SERIAL'].replace(':','').upper()
 cert=first('/certificates?filter%5BcertificateType%5D=IOS_DISTRIBUTION&filter%5BserialNumber%5D='+urllib.parse.quote(serial)+'&limit=1')
