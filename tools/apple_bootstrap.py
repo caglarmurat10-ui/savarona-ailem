@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import base64,json,os,time,urllib.parse,urllib.request,urllib.error
 from pathlib import Path
 import jwt
 
 BASE='https://api.appstoreconnect.apple.com/v1'
 SECRETS=Path(os.environ.get('TF_SECRETS_DIR','.tfsecrets'))
-META=json.loads((SECRETS/'meta.json').read_text())
+META=json.loads((SECRETS/'meta.json').read_text(encoding='utf-8-sig'))
 KEY=(SECRETS/f"AuthKey_{META['key_id']}.p8").read_text()
 now=int(time.time())
 TOKEN=jwt.encode({'iss':META['issuer_id'],'iat':now,'exp':now+600,'aud':'appstoreconnect-v1'},KEY,algorithm='ES256',headers={'alg':'ES256','kid':META['key_id'],'typ':'JWT'})
@@ -62,3 +62,4 @@ out.write_bytes(base64.b64decode(content))
 print('PROFILE_UUID='+str(attrs.get('uuid')))
 print('PROFILE_PATH='+str(out))
 print('APPLE_BOOTSTRAP=PASS')
+
