@@ -1,0 +1,23 @@
+name: transfer-033
+
+on:
+  pull_request:
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download signed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download transfer-v0.3.3-20260911 --repo "$GITHUB_REPOSITORY" --pattern 'Savarona-Ailem-v0.3.3.apk'
+          echo 'a5c862546b0cdd7af90bd075a7ae022b8a418f52a1ae26e161932fb0d082d8c6  Savarona-Ailem-v0.3.3.apk' | sha256sum -c -
+      - name: Upload Drive transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: savarona-ailem-0.3.3-drive-package
+          path: Savarona-Ailem-v0.3.3.apk
+          retention-days: 1
