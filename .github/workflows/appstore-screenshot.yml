@@ -1,4 +1,4 @@
-name: appstore-screenshot
+﻿name: appstore-screenshot
 
 on:
   workflow_dispatch:
@@ -22,7 +22,7 @@ jobs:
           python3 tools/bootstrap_mobile.py
           cd mobile
           flutter pub get
-          flutter build ios --simulator --release \
+          flutter build ios --simulator --debug \
             --dart-define="API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev"
       - name: Boot latest large iPhone and capture
         run: |
@@ -44,3 +44,4 @@ jobs:
           name: savarona-ailem-appstore-screenshot
           path: screenshots/savarona-ailem-iphone.png
           retention-days: 7
+
