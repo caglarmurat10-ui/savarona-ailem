@@ -42,6 +42,22 @@ class ApiClient {
   Future<bool> hasToken() async => (await _tokens.read()) != null;
   Future<String?> deviceToken() => _tokens.read();
 
+  Future<void> createFamily({required String familyName, required String ownerName,
+    required String deviceName, required String platform}) => _guard(() async {
+    final r = await _dio.post('/v1/families', data: {
+      'family_name': familyName, 'owner_name': ownerName,
+      'device_name': deviceName, 'platform': platform,
+    });
+    await _tokens.write(r.data['device_token'] as String);
+  });
+
+  Future<void> deleteAccount() => _guard(() async {
+    await _dio.delete('/v1/account', options: await _auth(),
+      data: {'confirmation': 'DELETE_MY_ACCOUNT'});
+  });
+
+  Future<void> clearSession() => _tokens.clear();
+
   Future<Map<String, dynamic>> bootstrap({
     required String bootstrapSecret,
     required String familyName,

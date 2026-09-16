@@ -54,6 +54,14 @@ class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                 }
+                "clearAccount" -> {
+                    TrackingStatusStore.setTrackingRequested(applicationContext, false)
+                    stopService(Intent(this, LocationTrackingService::class.java))
+                    TrackingStatusStore.setTrackingActive(applicationContext, false)
+                    TrackingStatusStore.clearCredentials(applicationContext)
+                    TrackingUploadQueue(applicationContext).use { it.clear() }
+                    result.success(null)
+                }
                 "stop" -> {
                     TrackingStatusStore.setTrackingRequested(applicationContext, false)
                     stopService(Intent(this, LocationTrackingService::class.java))

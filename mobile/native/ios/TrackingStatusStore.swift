@@ -15,6 +15,7 @@ enum TrackingStatusStore {
     static func saveCredentials(apiBaseUrl:String,deviceToken:String){defaults.set(apiBaseUrl,forKey:keyApiBaseUrl);_ = KeychainCredentialStore.saveDeviceToken(deviceToken)}
     static var apiBaseUrl:String?{defaults.string(forKey:keyApiBaseUrl)}
     static var deviceToken:String?{KeychainCredentialStore.readDeviceToken()}
+    static func clearAccount(){KeychainCredentialStore.clear();for key in [keyApiBaseUrl,keySequence,keyLastSendAttempt,keyLastSendSuccess,keyLastError]{defaults.removeObject(forKey:key)}}
     static func nextSequenceNo()->Int64{let current=(defaults.object(forKey:keySequence) as? NSNumber)?.int64Value ?? 0;let updated=current+1;defaults.set(NSNumber(value:updated),forKey:keySequence);return updated}
     static func snapshot(queuedCount:Int)->[String:Any]{var r:[String:Any]=["permissionState":permissionState(),"trackingActive":trackingActive,"trackingRequested":trackingRequested,"queuedCount":queuedCount];if let v=defaults.object(forKey:keyLastSendAttempt) as? Double{r["lastSendAttemptAt"]=v};if let v=defaults.object(forKey:keyLastSendSuccess) as? Double{r["lastSendSuccessAt"]=v};if let v=defaults.string(forKey:keyLastError){r["lastError"]=v};return r}
 }

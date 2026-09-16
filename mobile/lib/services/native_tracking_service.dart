@@ -18,4 +18,5 @@ class NativeTrackingService {
       _channel.invokeMethod('start', {'apiBaseUrl': apiBaseUrl, 'deviceToken': deviceToken});
 
   Future<void> stop() => _channel.invokeMethod('stop');
+  Future<void> clearAccount() => _channel.invokeMethod('clearAccount');
 }

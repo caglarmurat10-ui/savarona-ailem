@@ -47,6 +47,12 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
+      - name: Validate Flutter before signing
+        working-directory: mobile
+        run: |
+          flutter analyze
+          flutter test
+
       - name: Import Apple Distribution certificate
         uses: apple-actions/import-codesign-certs@v7
         with:
