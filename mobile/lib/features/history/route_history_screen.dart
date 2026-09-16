@@ -41,10 +41,10 @@ class _RouteHistoryScreenState extends State<RouteHistoryScreen> {
     }
   }
 
-  static const _windowLabels = {
-    Duration(hours: 6): 'Son 6 saat',
-    Duration(hours: 24): 'Son 24 saat',
-    Duration(days: 7): 'Son 7 gün',
+  static final _windowLabels = {
+    const Duration(hours: 6): 'Son 6 saat',
+    const Duration(hours: 24): 'Son 24 saat',
+    const Duration(days: 7): 'Son 7 gün',
   };
 
   @override
