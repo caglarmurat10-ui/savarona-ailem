@@ -39,7 +39,7 @@ class _SavaronaAilemAppState extends State<SavaronaAilemApp> {
       home: switch (_hasToken) {
         null => const Scaffold(body: Center(child: CircularProgressIndicator())),
         false => WelcomeScreen(api: _api, onReady: () => setState(() => _hasToken = true)),
-        true => HomeScreen(api: _api),
+        true => HomeScreen(api: _api, onAccountDeleted: () => setState(() => _hasToken = false)),
       },
     );
   }
