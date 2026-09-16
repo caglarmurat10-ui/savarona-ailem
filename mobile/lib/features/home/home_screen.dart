@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/config.dart';
+import '../../core/status_colors.dart';
 import '../../models/member_location.dart';
 import '../../models/permission_health.dart';
 import '../../services/api_client.dart';
@@ -27,6 +28,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   StreamSubscription? _liveSub;
   StreamSubscription? _connectionSub;
   Timer? _snapshotTimer;
+  Timer? _ageTicker;
   List<MemberLocation> _members = const [];
   bool _loading = true;
   bool _trackingBusy = false;
@@ -58,6 +60,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    _ageTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
@@ -251,6 +256,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _liveSub?.cancel();
     _connectionSub?.cancel();
     _snapshotTimer?.cancel();
+    _ageTicker?.cancel();
     _live.stop();
     super.dispose();
   }
@@ -258,11 +264,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget? _connectionBanner() {
     if (_connection == LiveConnectionState.live) return null;
     final label = _connection == LiveConnectionState.connecting ? 'Bağlanıyor…' : 'Bağlantı kesildi, yeniden deneniyor…';
-    return Container(
-      width: double.infinity,
-      color: Theme.of(context).colorScheme.tertiaryContainer,
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Center(child: Text(label, style: Theme.of(context).textTheme.labelMedium)),
+    return _FloatingStatusBanner(
+      icon: Icons.wifi_tethering_rounded,
+      text: label,
+      status: LiveStatus.delayed,
     );
   }
 
@@ -278,19 +283,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             : h.permissionState == TrackingPermissionState.grantedWhenInUse
                 ? 'Arka planda sürekli takip için “Her zaman” konum izni gerekli.'
                 : 'Konum paylaşımı şu anda aktif değil.';
-    return Material(
-      color: Theme.of(context).colorScheme.errorContainer,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(children: [
-          const Icon(Icons.location_off_outlined),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text)),
-          TextButton(
-            onPressed: _trackingBusy ? null : _startTracking,
-            child: Text(_trackingBusy ? 'Başlatılıyor…' : 'Başlat'),
-          ),
-        ]),
+    return _FloatingStatusBanner(
+      icon: Icons.location_off_outlined,
+      text: text,
+      status: LiveStatus.offline,
+      action: TextButton(
+        onPressed: _trackingBusy ? null : _startTracking,
+        child: Text(_trackingBusy ? 'Başlatılıyor…' : 'Başlat'),
       ),
     );
   }
@@ -331,35 +330,261 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ],
       ),
-      body: Column(children: [
-        if (connectionBanner != null) connectionBanner,
-        if (trackingBanner != null) trackingBanner,
-        Expanded(
-          flex: 5,
-          child: LiveFamilyMap(
-            members: visibleMembers,
-            onMemberTap: _openMember,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: LiveFamilyMap(
+              members: visibleMembers,
+              onMemberTap: _openMember,
+            ),
+          ),
+          if (connectionBanner != null || trackingBanner != null)
+            Positioned(
+              top: 12,
+              left: 12,
+              right: 12,
+              child: Column(
+                children: [
+                  if (connectionBanner != null) connectionBanner,
+                  if (connectionBanner != null && trackingBanner != null) const SizedBox(height: 8),
+                  if (trackingBanner != null) trackingBanner,
+                ],
+              ),
+            ),
+          DraggableScrollableSheet(
+            initialChildSize: 0.32,
+            minChildSize: 0.16,
+            maxChildSize: 0.86,
+            snap: true,
+            snapSizes: const [0.16, 0.32, 0.86],
+            builder: (context, scrollController) => _MemberSheet(
+              scrollController: scrollController,
+              members: visibleMembers,
+              ageText: age,
+              onMemberTap: _openMember,
+              onSos: widget.api.sendSos,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FloatingStatusBanner extends StatelessWidget {
+  const _FloatingStatusBanner({
+    required this.icon,
+    required this.text,
+    required this.status,
+    this.action,
+  });
+
+  final IconData icon;
+  final String text;
+  final LiveStatus status;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final statusColor = context.colorFor(status);
+    return Material(
+      color: colors.surface.withValues(alpha: 0.96),
+      elevation: 3,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.16), shape: BoxShape.circle),
+              child: Icon(icon, size: 17, color: statusColor),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyMedium)),
+            if (action != null) action!,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MemberSheet extends StatelessWidget {
+  const _MemberSheet({
+    required this.scrollController,
+    required this.members,
+    required this.ageText,
+    required this.onMemberTap,
+    required this.onSos,
+  });
+
+  final ScrollController scrollController;
+  final List<MemberLocation> members;
+  final String Function(MemberLocation) ageText;
+  final ValueChanged<MemberLocation> onMemberTap;
+  final Future<void> Function() onSos;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.surface,
+      elevation: 10,
+      shadowColor: Colors.black38,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: ListView(
+        controller: scrollController,
+        padding: EdgeInsets.zero,
+        children: [
+          const SizedBox(height: 10),
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: colors.outlineVariant,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
+            child: Row(
+              children: [
+                Icon(Icons.groups_2_rounded, size: 20, color: colors.primary),
+                const SizedBox(width: 8),
+                Text('${members.length} aile üyesi', style: Theme.of(context).textTheme.titleMedium),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: SosButton(onSos: onSos),
+          ),
+          if (members.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              child: Center(
+                child: Text('Aile üyesi bulunamadı.', style: Theme.of(context).textTheme.bodyMedium),
+              ),
+            )
+          else
+            for (final member in members)
+              _MemberCard(
+                member: member,
+                ageText: ageText(member),
+                onTap: () => onMemberTap(member),
+              ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemberCard extends StatelessWidget {
+  const _MemberCard({required this.member, required this.ageText, required this.onTap});
+
+  final MemberLocation member;
+  final String ageText;
+  final VoidCallback onTap;
+
+  LiveStatus get _status {
+    final seen = member.lastSeenAt;
+    if (seen == null) return LiveStatus.offline;
+    final age = DateTime.now().difference(seen);
+    if (age <= const Duration(seconds: 45)) return LiveStatus.live;
+    if (age <= const Duration(minutes: 3)) return LiveStatus.delayed;
+    return LiveStatus.offline;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final statusColor = context.colorFor(_status);
+    final permissionLost = member.permissionState == 'permission_lost';
+    final initial = member.name.isEmpty ? '?' : member.name.characters.first.toUpperCase();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: Material(
+        color: colors.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    CircleAvatar(
+                      radius: 24,
+                      backgroundColor: colors.primaryContainer,
+                      child: Text(
+                        initial,
+                        style: TextStyle(fontWeight: FontWeight.bold, color: colors.onPrimaryContainer),
+                      ),
+                    ),
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: statusColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: colors.surfaceContainerHigh, width: 2.5),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(member.name, style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${member.liveSpeedKmh?.toStringAsFixed(0) ?? '—'} km/sa • 🔋 ${member.batteryPct ?? '—'}%'
+                        '${permissionLost ? ' • Konum izni kapalı' : ''}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      ageText,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: statusColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    if (member.headingDeg != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text('${member.headingDeg!.round()}°', style: Theme.of(context).textTheme.labelSmall),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-        Expanded(flex: 4, child: ListView.builder(
-          itemCount: visibleMembers.length,
-          itemBuilder: (context, i) {
-            final m = visibleMembers[i];
-            final permissionText = m.permissionState == 'permission_lost' ? ' • Konum izni kapalı' : '';
-            return ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(m.name),
-              subtitle: Text('${m.liveSpeedKmh?.toStringAsFixed(0) ?? '—'} km/sa • 🔋 ${m.batteryPct ?? '—'}% • ${age(m)}$permissionText'),
-              trailing: m.headingDeg == null ? null : Text('${m.headingDeg!.round()}°'),
-              onTap: () => _openMember(m),
-            );
-          },
-        )),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: SosButton(onSos: widget.api.sendSos),
-        ),
-      ]),
+      ),
     );
   }
 }

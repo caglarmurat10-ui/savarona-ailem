@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import '../../core/status_colors.dart';
 import '../../models/member_location.dart';
 import '../../services/api_client.dart';
 import '../../services/live_socket.dart';
@@ -120,10 +121,10 @@ class _MemberDetailScreenState extends State<MemberDetailScreen>
   Color _statusColor(BuildContext context) {
     final age = _age();
     if (age == 'Canlı' && _connection == LiveConnectionState.live) {
-      return Colors.green;
+      return context.colorFor(LiveStatus.live);
     }
-    if (age == 'Çevrimdışı') return Theme.of(context).colorScheme.error;
-    return Colors.orange;
+    if (age == 'Çevrimdışı') return context.colorFor(LiveStatus.offline);
+    return context.colorFor(LiveStatus.delayed);
   }
 
   String _connectionText() {

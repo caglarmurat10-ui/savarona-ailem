@@ -11,6 +11,7 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -19,31 +20,47 @@ class WelcomeScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.family_restroom, size: 72),
-              const SizedBox(height: 16),
-              Text(AppConfig.appName, style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
-              const SizedBox(height: 8),
-              const Text(
-                'Aileniz için açık rızaya dayalı, görünür konum paylaşımı.',
+              Container(
+                width: 112,
+                height: 112,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.family_restroom_rounded, size: 56, color: colors.onPrimaryContainer),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                AppConfig.appName,
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
+              const SizedBox(height: 8),
+              Text(
+                'Aileniz için açık rızaya dayalı, görünür konum paylaşımı.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: colors.onSurfaceVariant),
+              ),
               const SizedBox(height: 40),
-              FilledButton(
+              FilledButton.icon(
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => JoinScreen(api: api, onJoined: onReady),
                 )),
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
+                icon: const Icon(Icons.group_add_rounded),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text('Davet koduyla aileye katıl'),
                 ),
               ),
               const SizedBox(height: 12),
-              OutlinedButton(
+              OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => BootstrapScreen(api: api, onBootstrapped: onReady),
                 )),
-                child: const Padding(
-                  padding: EdgeInsets.all(12),
+                icon: const Icon(Icons.settings_suggest_outlined),
+                label: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
                   child: Text('İlk aile sahibi olarak kur (bootstrap)'),
                 ),
               ),

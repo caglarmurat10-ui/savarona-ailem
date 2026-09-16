@@ -56,6 +56,7 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('İlk kurulum (owner)')),
       body: SafeArea(
@@ -64,11 +65,29 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
           child: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 22,
+                    backgroundColor: colors.primaryContainer,
+                    child: Icon(Icons.settings_suggest_outlined, color: colors.onPrimaryContainer),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Bu backend için ilk aile sahibi hesabını kurun.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
               TextFormField(
                 controller: _secret,
                 obscureText: _obscureSecret,
                 decoration: InputDecoration(
                   labelText: 'Bootstrap secret',
+                  prefixIcon: const Icon(Icons.vpn_key_outlined),
                   suffixIcon: IconButton(
                     icon: Icon(_obscureSecret ? Icons.visibility : Icons.visibility_off),
                     onPressed: () => setState(() => _obscureSecret = !_obscureSecret),
@@ -79,25 +98,25 @@ class _BootstrapScreenState extends State<BootstrapScreen> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _familyName,
-                decoration: const InputDecoration(labelText: 'Aile adı'),
+                decoration: const InputDecoration(labelText: 'Aile adı', prefixIcon: Icon(Icons.home_outlined)),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Aile adı gerekli' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _ownerName,
-                decoration: const InputDecoration(labelText: 'Adınız'),
+                decoration: const InputDecoration(labelText: 'Adınız', prefixIcon: Icon(Icons.person_outline)),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Ad gerekli' : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _deviceName,
-                decoration: const InputDecoration(labelText: 'Cihaz adı'),
+                decoration: const InputDecoration(labelText: 'Cihaz adı', prefixIcon: Icon(Icons.smartphone_outlined)),
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Cihaz adı gerekli' : null,
               ),
               const SizedBox(height: 24),
               if (_error != null) Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                child: Text(_error!, style: TextStyle(color: colors.error)),
               ),
               FilledButton(
                 onPressed: _loading ? null : _submit,

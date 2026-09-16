@@ -108,7 +108,11 @@ class _PermissionHealthScreenState extends State<PermissionHealthScreen> {
                       ListTile(leading: const Icon(Icons.upload), title: const Text('Son gönderim denemesi'), trailing: Text(_fmt(h.lastSendAttemptAt))),
                       ListTile(leading: const Icon(Icons.cloud_done), title: const Text('Son başarılı gönderim'), trailing: Text(_fmt(h.lastSendSuccessAt))),
                       if (h.lastError != null)
-                        ListTile(leading: const Icon(Icons.error_outline, color: Colors.red), title: const Text('Son hata'), subtitle: Text(h.lastError!)),
+                        ListTile(
+                          leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+                          title: const Text('Son hata'),
+                          subtitle: Text(h.lastError!),
+                        ),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _actionBusy ? null : _start,
