@@ -63,8 +63,22 @@ async function bootstrap(request: Request, env: Env): Promise<Response> {
   const done = await env.DB.prepare("SELECT value FROM app_meta WHERE key='bootstrap_completed'").first();
 
   if (done) {
-    const owner = await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE role='owner' ORDER BY created_at ASC LIMIT 1`).first<any>();
+    // Kurtarma YALNIZ bootstrap ile kurulan aileye uygulanir. Onceden "global olarak en eski
+    // owner" seciliyordu; self-service aile olusturma (POST /v1/families) eklendikten sonra bu,
+    // baska bir kullanicinin ailesini secip o kullanicinin cihazlarini iptal edebilir ve admin'e
+    // yabanci bir aileye erisim verebilirdi. Bootstrap uyesi app_meta'da sabitlenir.
+    const pinned = await env.DB.prepare("SELECT value FROM app_meta WHERE key='bootstrap_member_id'").first<any>();
+    const owner = pinned?.value
+      ? await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE id=?1`).bind(pinned.value).first<any>()
+      // Bu anahtar yazilmadan once bootstrap edilmis kurulumlar icin geriye donuk uyum: o
+      // donemde self-service aile yoktu, dolayisiyla en eski owner bootstrap sahibidir.
+      : await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE role='owner' ORDER BY created_at ASC LIMIT 1`).first<any>();
     if (!owner?.member_id || !owner?.family_id) return err('owner_not_found', 409);
+    // Bir kez cozulduginde sabitle - sonraki kurtarmalar artik siralamaya bagli kalmaz.
+    if (!pinned?.value) {
+      await env.DB.prepare("INSERT OR REPLACE INTO app_meta(key,value,updated_at) VALUES('bootstrap_member_id',?1,?2)")
+        .bind(owner.member_id, now()).run();
+    }
 
     const deviceId = crypto.randomUUID();
     const token = randomToken(32);
@@ -104,6 +118,8 @@ async function bootstrap(request: Request, env: Env): Promise<Response> {
     env.DB.prepare("INSERT INTO members(id,family_id,display_name,role,created_at) VALUES(?1,?2,?3,'owner',?4)").bind(memberId, familyId, String(b.owner_name).slice(0,80), ts),
     env.DB.prepare('INSERT INTO devices(id,family_id,member_id,display_name,platform,token_hash,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)').bind(deviceId, familyId, memberId, String(b.device_name).slice(0,80), platform, tokenHash, ts),
     env.DB.prepare("INSERT INTO app_meta(key,value,updated_at) VALUES('bootstrap_completed','1',?1)").bind(ts),
+    // Kurtarmanin hangi aileye ait oldugunu sabitler (bkz. yukaridaki kurtarma dali).
+    env.DB.prepare("INSERT OR REPLACE INTO app_meta(key,value,updated_at) VALUES('bootstrap_member_id',?1,?2)").bind(memberId, ts),
   ]);
 
   return j({ ok: true, family_id: familyId, member_id: memberId, device_id: deviceId, device_token: token }, 201);

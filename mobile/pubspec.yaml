@@ -1,7 +1,10 @@
 name: savarona_ailem
 description: Savarona Ailem - consent-based realtime family location sharing
 publish_to: none
-version: 0.3.6+10
+# App Store'da inceleme bekleyen surum 0.3.5 - yeni build bu surume baglanacagi icin marketing
+# surumu 0.3.5 kalmali (flutter build ios --build-name gecmiyor, bu deger kullaniliyor).
+# Build numarasi CI'da otomatik uretilir: 1000 + GITHUB_RUN_NUMBER (bkz. testflight.yml).
+version: 0.3.5+1005
 
 environment:
   sdk: '>=3.8.0 <4.0.0'

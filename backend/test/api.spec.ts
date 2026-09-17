@@ -61,6 +61,51 @@ describe('family journey', () => {
     ownerSeq = 0;
   });
 
+  it('never hijacks a self-service family during owner recovery', async () => {
+    // Self-service aile olusturma (POST /v1/families) eklenmeden once kurtarma "global olarak en
+    // eski owner"i seciyordu. Kullanicilar kendi ailelerini olusturabildigi icin bu, yabanci bir
+    // aileyi secip o kullanicinin cihazlarini iptal edebilir ve admin'e o aileye erisim verebilirdi.
+    // Kurtarma artik app_meta'daki bootstrap uyesine sabitlenmistir.
+    const signup = await SELF.fetch(`${BASE}/v1/families`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.77' },
+      body: JSON.stringify({ family_name: 'Baska bir aile', owner_name: 'Yabanci', device_name: 'Yabanci telefon', platform: 'ios' }),
+    });
+    expect(signup.status).toBe(201);
+    const victim = await signup.json<any>();
+    const previous = owner;
+
+    const res = await SELF.fetch(`${BASE}/v1/admin/bootstrap`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-bootstrap-secret': BOOTSTRAP_SECRET },
+      body: JSON.stringify({ family_name: 'Ignored', owner_name: 'Ignored', device_name: 'Recovery Phone 2', platform: 'ios' }),
+    });
+    expect(res.status).toBe(201);
+    const recovered = await res.json<any>();
+
+    // Kurtarma bootstrap ailesine dondu, yabanci aileye DEGIL.
+    expect(recovered.family_id).toBe(previous.family_id);
+    expect(recovered.member_id).toBe(previous.member_id);
+    expect(recovered.family_id).not.toBe(victim.family_id);
+    expect(recovered.member_id).not.toBe(victim.member_id);
+
+    // Yabanci ailenin cihazi iptal edilmemis ve erisimi bozulmamis olmali.
+    const device = await env.DB.prepare('SELECT revoked_at FROM devices WHERE id=?1')
+      .bind(victim.device_id).first<{ revoked_at: number | null }>();
+    expect(device?.revoked_at ?? null).toBeNull();
+    expect((await SELF.fetch(`${BASE}/v1/family/snapshot`, { headers: authHeaders(victim.device_token) })).status).toBe(200);
+
+    // Test verisini temizle ve owner'i yeni cihaza tasi.
+    expect((await SELF.fetch(`${BASE}/v1/account`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${victim.device_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ confirmation: 'DELETE_MY_ACCOUNT' }),
+    })).status).toBe(200);
+
+    owner = recovered;
+    ownerSeq = 0;
+  });
+
   it('member endpoints require a bearer token', async () => {
     const res = await SELF.fetch(`${BASE}/v1/family/snapshot`);
     expect(res.status).toBe(401);
