@@ -1,4 +1,5 @@
 import { authenticate } from './auth';
+import { createFamily, deleteAccount } from './accounts';
 import { encryptSecret, randomToken, sha256Hex, signTicket, verifyTicket } from './crypto';
 import { FamilyLive } from './realtime';
 import { clientIp, rateLimited } from './rate_limit';
@@ -16,8 +17,8 @@ const htmlHeaders = { 'content-type': 'text/html; charset=utf-8', 'cache-control
 function publicPage(title: string, body: string): Response {
   return new Response(`<!doctype html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:820px;margin:40px auto;padding:0 20px;line-height:1.6;color:#17202a}h1,h2{line-height:1.25}small{color:#5d6d7e}a{color:#0b63ce}</style></head><body>${body}</body></html>`, { headers: htmlHeaders });
 }
-function privacyPage(): Response { return publicPage('Savarona Ailem - Gizlilik Politikası', `<h1>Savarona Ailem Gizlilik Politikası</h1><small>Son güncelleme: 14 Eylül 2026</small><p>Savarona Ailem, aile üyelerinin açık rızaya dayalı konum paylaşımı için tasarlanmıştır. Uygulama gizli takip yapmaz; konum paylaşımı cihaz sahibinin işletim sistemi izni ve uygulama içindeki tercihi ile çalışır.</p><h2>Toplanan veriler</h2><p>Uygulama; görünen ad, hassas konum ve konumla ilişkili zaman/doğruluk/hız/yön bilgileri, cihaz ve uygulama tanımlayıcıları, pil yüzdesi, izin/uygulama durumu, aile davetleri, geofence adları ve olayları ile SOS olaylarını işleyebilir. Bildirim için gerekli push tokenları güvenli biçimde saklanır.</p><h2>Kullanım amacı</h2><p>Veriler yalnızca aile içi canlı konum paylaşımı, konum geçmişi, geofence, SOS, bağlantı/takip sağlık durumu ve bildirim gibi temel uygulama işlevlerini sağlamak için kullanılır. Reklam hedefleme veya üçüncü taraflar arası takip yapılmaz ve kişisel veriler satılmaz.</p><h2>Paylaşım ve güvenlik</h2><p>Konum ve ilgili aile verileri yalnızca aynı aile grubundaki yetkili cihazlara sunulur. Hizmet Cloudflare altyapısı üzerinde çalışır. Cihaz erişim anahtarları güvenli depolamada tutulur; sunucuda gerekli kimlik doğrulama değerleri hash/şifreleme ile korunur.</p><h2>Kontrol ve silme</h2><p>Kullanıcı konum iznini veya paylaşımı cihazından durdurabilir. Veri erişimi veya silme talebi için <a href="/support">Destek</a> sayfasını kullanın.</p><p>Bu politika uygulamanın işlevleri değiştikçe güncellenebilir.</p>`); }
-function supportPage(): Response { return publicPage('Savarona Ailem - Destek', `<h1>Savarona Ailem Destek</h1><p>Savarona Ailem; aile içi canlı konum, konum geçmişi, geofence ve SOS özellikleri sunar.</p><h2>Kurulum</h2><p>Konum paylaşımının çalışması için iPhone Ayarlar &gt; Gizlilik ve Güvenlik &gt; Konum Servisleri bölümünde Savarona Ailem için gerekli konum iznini verin. Arka planda canlı takip için uygulamanın istediği "Her Zaman" konum iznini onaylayın.</p><h2>Sorun giderme</h2><p>Uygulamada bir üye gecikmeli veya çevrimdışı görünüyorsa internet bağlantısını, konum iznini ve uygulamanın arka planda çalışmasına izin verildiğini kontrol edin.</p><h2>Gizlilik ve veri talepleri</h2><p>Gizlilik ayrıntıları için <a href="/privacy">Gizlilik Politikası</a> sayfasına bakın. Destek veya veri silme talebi için <a href="mailto:caglarmurat10@gmail.com">caglarmurat10@gmail.com</a> adresinden iletişime geçebilirsiniz.</p>`); }
+function privacyPage(): Response { return publicPage('Savarona Ailem - Gizlilik Politikası', `<h1>Savarona Ailem Gizlilik Politikası</h1><small>Son güncelleme: 16 Eylül 2026</small><p>Savarona Ailem, aile üyelerinin açık rızaya dayalı konum paylaşımı için tasarlanmıştır. Uygulama gizli takip yapmaz; konum paylaşımı cihaz sahibinin işletim sistemi izni ve uygulama içindeki tercihi ile çalışır.</p><h2>Toplanan veriler</h2><p>Uygulama; görünen ad, hassas konum ve konumla ilişkili zaman/doğruluk/hız/yön bilgileri, cihaz ve uygulama tanımlayıcıları, pil yüzdesi, izin/uygulama durumu, aile davetleri, geofence adları ve olayları ile SOS olaylarını işleyebilir. Bildirim için gerekli push tokenları güvenli biçimde saklanır.</p><h2>Kullanım amacı</h2><p>Veriler yalnızca aile içi canlı konum paylaşımı, konum geçmişi, geofence, SOS, bağlantı/takip sağlık durumu ve bildirim gibi temel uygulama işlevlerini sağlamak için kullanılır. Reklam hedefleme veya üçüncü taraflar arası takip yapılmaz ve kişisel veriler satılmaz.</p><h2>Paylaşım ve güvenlik</h2><p>Konum ve ilgili aile verileri yalnızca aynı aile grubundaki yetkili cihazlara sunulur. Hizmet Cloudflare altyapısı üzerinde çalışır. Cihaz erişim anahtarları güvenli depolamada tutulur; sunucuda gerekli kimlik doğrulama değerleri hash/şifreleme ile korunur.</p><h2>Kontrol ve silme</h2><p>Kullanıcı konum iznini veya paylaşımı cihazından durdurabilir. Hesabınızı uygulamanın ana ekranındaki Hesabım > Hesabımı sil menüsünden kalıcı olarak silebilirsiniz. Bu işlem cihaz erişimlerinizi, konum geçmişinizi ve size ait olayları siler. Diğer aile üyelerinin verileri korunur; son üye ayrıldığında aile grubu da silinir. Ek veri erişimi veya destek talebi için <a href="/support">Destek</a> sayfasını kullanın.</p><p>Bu politika uygulamanın işlevleri değiştikçe güncellenebilir.</p>`); }
+function supportPage(): Response { return publicPage('Savarona Ailem - Destek', `<h1>Savarona Ailem Destek</h1><p>Savarona Ailem; aile içi canlı konum, konum geçmişi, geofence ve SOS özellikleri sunar.</p><h2>Kurulum</h2><p>Başlangıç ekranından Yeni aile oluştur ile kendi özel grubunuzu oluşturun veya Davet ile katıl ile mevcut gruba katılın. Yönetici anahtarı veya parola gerekmez. Oturum bu cihazda saklanır. Uygulamayı silmek hesabınızı silmez.</p><p>Konum paylaşımının çalışması için iPhone Ayarlar &gt; Gizlilik ve Güvenlik &gt; Konum Servisleri bölümünde Savarona Ailem için gerekli konum iznini verin. Arka planda canlı takip için uygulamanın istediği "Her Zaman" konum iznini onaylayın.</p><h2>Sorun giderme</h2><p>Uygulamada bir üye gecikmeli veya çevrimdışı görünüyorsa internet bağlantısını, konum iznini ve uygulamanın arka planda çalışmasına izin verildiğini kontrol edin.</p><h2>Gizlilik ve veri talepleri</h2><p>Gizlilik ayrıntıları için <a href="/privacy">Gizlilik Politikası</a> sayfasına bakın. Destek veya veri silme talebi için <a href="mailto:caglarmurat10@gmail.com">caglarmurat10@gmail.com</a> adresinden iletişime geçebilirsiniz.</p>`); }
 
 
 async function body<T = any>(request: Request): Promise<T | null> {
@@ -62,8 +63,22 @@ async function bootstrap(request: Request, env: Env): Promise<Response> {
   const done = await env.DB.prepare("SELECT value FROM app_meta WHERE key='bootstrap_completed'").first();
 
   if (done) {
-    const owner = await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE role='owner' ORDER BY created_at ASC LIMIT 1`).first<any>();
+    // Kurtarma YALNIZ bootstrap ile kurulan aileye uygulanir. Onceden "global olarak en eski
+    // owner" seciliyordu; self-service aile olusturma (POST /v1/families) eklendikten sonra bu,
+    // baska bir kullanicinin ailesini secip o kullanicinin cihazlarini iptal edebilir ve admin'e
+    // yabanci bir aileye erisim verebilirdi. Bootstrap uyesi app_meta'da sabitlenir.
+    const pinned = await env.DB.prepare("SELECT value FROM app_meta WHERE key='bootstrap_member_id'").first<any>();
+    const owner = pinned?.value
+      ? await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE id=?1`).bind(pinned.value).first<any>()
+      // Bu anahtar yazilmadan once bootstrap edilmis kurulumlar icin geriye donuk uyum: o
+      // donemde self-service aile yoktu, dolayisiyla en eski owner bootstrap sahibidir.
+      : await env.DB.prepare(`SELECT id AS member_id,family_id FROM members WHERE role='owner' ORDER BY created_at ASC LIMIT 1`).first<any>();
     if (!owner?.member_id || !owner?.family_id) return err('owner_not_found', 409);
+    // Bir kez cozulduginde sabitle - sonraki kurtarmalar artik siralamaya bagli kalmaz.
+    if (!pinned?.value) {
+      await env.DB.prepare("INSERT OR REPLACE INTO app_meta(key,value,updated_at) VALUES('bootstrap_member_id',?1,?2)")
+        .bind(owner.member_id, now()).run();
+    }
 
     const deviceId = crypto.randomUUID();
     const token = randomToken(32);
@@ -103,6 +118,8 @@ async function bootstrap(request: Request, env: Env): Promise<Response> {
     env.DB.prepare("INSERT INTO members(id,family_id,display_name,role,created_at) VALUES(?1,?2,?3,'owner',?4)").bind(memberId, familyId, String(b.owner_name).slice(0,80), ts),
     env.DB.prepare('INSERT INTO devices(id,family_id,member_id,display_name,platform,token_hash,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)').bind(deviceId, familyId, memberId, String(b.device_name).slice(0,80), platform, tokenHash, ts),
     env.DB.prepare("INSERT INTO app_meta(key,value,updated_at) VALUES('bootstrap_completed','1',?1)").bind(ts),
+    // Kurtarmanin hangi aileye ait oldugunu sabitler (bkz. yukaridaki kurtarma dali).
+    env.DB.prepare("INSERT OR REPLACE INTO app_meta(key,value,updated_at) VALUES('bootstrap_member_id',?1,?2)").bind(memberId, ts),
   ]);
 
   return j({ ok: true, family_id: familyId, member_id: memberId, device_id: deviceId, device_token: token }, 201);
@@ -290,10 +307,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (path === '/health') return j({ ok:true, service:'savarona-ailem-api', ts:now() });
   if (request.method === 'POST' && path === '/v1/admin/bootstrap') return bootstrap(request,env);
   if (request.method === 'POST' && path === '/v1/join') return joinFamily(request,env);
+  if (request.method === 'POST' && path === '/v1/families') return createFamily(request,env);
   if (request.method === 'GET' && path === '/v1/live') return liveConnect(request,env);
 
   const a = await requireAuth(request,env);
   if (a instanceof Response) return a;
+  if (request.method === 'DELETE' && path === '/v1/account') return deleteAccount(request,env,a);
   if (request.method === 'POST' && path === '/v1/invites') return createInvite(request,env,a);
   if (request.method === 'POST' && path === '/v1/location') return postLocation(request,env,a);
   if (request.method === 'POST' && path === '/v1/heartbeat') return heartbeat(request,env,a);

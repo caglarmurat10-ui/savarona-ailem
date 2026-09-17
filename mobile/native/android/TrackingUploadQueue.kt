@@ -52,6 +52,7 @@ class TrackingUploadQueue(context: Context) : SQLiteOpenHelper(context.applicati
         }
     }
     @Synchronized fun remove(rowId: Long) { writableDatabase.use { it.delete(TABLE, "id=?", arrayOf(rowId.toString())) } }
+    @Synchronized fun clear() { writableDatabase.use { it.delete(TABLE, null, null) } }
     @Synchronized fun count(): Int { readableDatabase.rawQuery("SELECT COUNT(*) FROM $TABLE", null).use { it.moveToFirst(); return it.getInt(0) } }
 }
 

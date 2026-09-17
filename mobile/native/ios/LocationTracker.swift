@@ -58,7 +58,7 @@ final class LocationTracker: NSObject, CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager:CLLocationManager,didUpdateLocations locations:[CLLocation]){
-        guard let location=locations.last else{return}; let speed=location.speed >= 0 ? location.speed:nil
+        guard TrackingStatusStore.trackingRequested, let location=locations.last else{return}; let speed=location.speed >= 0 ? location.speed:nil
         let profile:SpeedProfile = { if let s=speed, s>=8{return .vehicle}; if let s=speed, s>=0.5{return .walking}; return .stationary }()
         applyProfile(profile)
         let sample=QueuedSample(id:UUID(),sequenceNo:TrackingStatusStore.nextSequenceNo(),capturedAt:Int64(location.timestamp.timeIntervalSince1970*1000),lat:location.coordinate.latitude,lng:location.coordinate.longitude,accuracyM:location.horizontalAccuracy>=0 ? location.horizontalAccuracy:nil,speedMps:speed,headingDeg:location.course>=0 ? location.course:nil,batteryPct:currentBatteryPct(),activity:profile.activityLabel)
@@ -80,7 +80,7 @@ final class LocationTracker: NSObject, CLLocationManagerDelegate {
 
     private func scheduleFlush(after delay:TimeInterval){ guard !flushScheduled else{return}; flushScheduled=true; DispatchQueue.main.asyncAfter(deadline:.now()+delay){[weak self] in self?.flushScheduled=false; self?.flushOnce()} }
     private func flushOnce(){
-        guard TrackingStatusStore.apiBaseUrl != nil, TrackingStatusStore.deviceToken != nil else{return}; guard authorized else{refreshPermissionStatus();scheduleFlush(after:10);return}; guard let item=LocationUploadQueue.shared.peekOldest() else{scheduleFlush(after:2);return}
+        guard TrackingStatusStore.trackingRequested, TrackingStatusStore.apiBaseUrl != nil, TrackingStatusStore.deviceToken != nil else{return}; guard authorized else{refreshPermissionStatus();scheduleFlush(after:10);return}; guard let item=LocationUploadQueue.shared.peekOldest() else{scheduleFlush(after:2);return}
         send(item){[weak self] outcome in guard let self else{return}; switch outcome { case .delivered,.alreadyDelivered:LocationUploadQueue.shared.remove(id:item.id);TrackingStatusStore.markSendSuccess();self.flushBackoff=2;self.scheduleFlush(after:0); case .failed(let msg):TrackingStatusStore.setLastError(msg);self.flushBackoff=min(self.flushBackoff*2,60);self.scheduleFlush(after:self.flushBackoff) } }
     }
     private enum SendOutcome{case delivered,alreadyDelivered,failed(String)}

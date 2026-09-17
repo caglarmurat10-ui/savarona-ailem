@@ -37,8 +37,11 @@ class _JoinScreenState extends State<JoinScreen> {
         deviceName: _deviceName.text.trim(),
         platform: Platform.isIOS ? 'ios' : 'android',
       );
+      if (!mounted) return;
+      Navigator.of(context).pop();
       widget.onJoined();
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() => _error = switch (e.code) {
         'invite_invalid_or_expired' => 'Davet kodu geçersiz ya da süresi dolmuş.',
         'rate_limited' => 'Çok fazla deneme yapıldı, biraz sonra tekrar deneyin.',

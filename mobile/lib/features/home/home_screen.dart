@@ -14,8 +14,9 @@ import '../permission/permission_health_screen.dart';
 import '../sos/sos_button.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.api});
+  const HomeScreen({super.key, required this.api, required this.onAccountDeleted});
   final ApiClient api;
+  final VoidCallback onAccountDeleted;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -32,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   List<MemberLocation> _members = const [];
   bool _loading = true;
   bool _trackingBusy = false;
+  bool _deleting = false;
   bool _updateDialogOpen = false;
   bool _snapshotRefreshing = false;
   PermissionHealth? _trackingHealth;
@@ -218,6 +220,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _onLive(Map<String, dynamic> e) {
+    if (e['type'] == 'member_deleted') {
+      if (mounted) setState(() => _members = _members.where((m) => m.memberId != e['member_id']).toList());
+      return;
+    }
+    if (e['type'] == 'member_joined') { unawaited(_refreshSnapshot()); return; }
     if (e['type'] != 'location' && e['type'] != 'heartbeat' && e['type'] != 'device_stale') return;
     final id = e['member_id'] as String?;
     if (id == null) return;
@@ -309,6 +316,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _deleteAccount() async {
+    if (_deleting) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Hesabımı kalıcı olarak sil'),
+      content: const Text('Hesabınız, tüm cihaz erişimleriniz, konum geçmişiniz ve size ait olaylar kalıcı olarak silinir. Paylaşım durur. Diğer aile üyelerinin verileri silinmez; aile sahibiyseniz sahiplik kalan bir üyeye geçer. Tek üyeyseniz aile grubu da silinir. Bu işlem geri alınamaz.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Vazgeç')),
+        TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Hesabımı sil')),
+      ],
+    ));
+    if (confirmed != true || !mounted) return;
+    setState(() => _deleting = true);
+    try {
+      await _native.stop();
+      await widget.api.deleteAccount();
+      await _live.stop();
+      await _native.clearAccount();
+      await widget.api.clearSession();
+      if (mounted) widget.onAccountDeleted();
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('İşlem tamamlanamadı. Konum paylaşımı durduruldu. Bağlantınızı kontrol edip yeniden deneyin.'),
+      ));
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -319,6 +354,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       appBar: AppBar(
         title: const Text('Savarona Ailem'),
         actions: [
+          PopupMenuButton<String>(tooltip: 'Hesabım', enabled: !_deleting,
+            onSelected: (_) => _deleteAccount(),
+            itemBuilder: (_) => [const PopupMenuItem(value: 'delete', child: Text('Hesabımı sil'))],
+            icon: const Icon(Icons.manage_accounts_outlined)),
           IconButton(icon: const Icon(Icons.person_add_alt), tooltip: 'Davet oluştur', onPressed: _showInvite),
           IconButton(
             icon: const Icon(Icons.health_and_safety_outlined),

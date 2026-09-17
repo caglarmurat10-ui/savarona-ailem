@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/config.dart';
 import '../../services/api_client.dart';
-import 'bootstrap_screen.dart';
+import 'create_family_screen.dart';
 import 'join_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -56,12 +56,12 @@ class WelcomeScreen extends StatelessWidget {
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => BootstrapScreen(api: api, onBootstrapped: onReady),
+                  builder: (_) => CreateFamilyScreen(api: api, onReady: onReady),
                 )),
                 icon: const Icon(Icons.settings_suggest_outlined),
                 label: const Padding(
                   padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('İlk aile sahibi olarak kur (bootstrap)'),
+                  child: Text('Yeni aile oluştur'),
                 ),
               ),
             ],

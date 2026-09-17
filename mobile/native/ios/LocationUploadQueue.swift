@@ -13,4 +13,5 @@ final class LocationUploadQueue {
     func peekOldest()->QueuedSample?{queue.sync{readAll().first}}
     func remove(id:UUID){queue.sync{var items=readAll();items.removeAll{$0.id==id};writeAll(items)}}
     func count()->Int{queue.sync{readAll().count}}
+    func clear(){queue.sync{writeAll([])}}
 }

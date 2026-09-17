@@ -12,6 +12,9 @@ export class FamilyLive extends DurableObject<Env> {
   private async broadcast(message: string): Promise<number> {
     let delivered = 0;
     for (const ws of this.ctx.getWebSockets()) {
+      const attachment = ws.deserializeAttachment();
+      const active = await this.env.DB.prepare('SELECT id FROM devices WHERE id=?1 AND revoked_at IS NULL').bind(attachment?.deviceId || '').first();
+      if (!active) { ws.close(1008, 'Account unavailable'); continue; }
       try { ws.send(message); delivered++; } catch { /* connection cleanup is automatic */ }
     }
     return delivered;
@@ -56,6 +59,9 @@ export class FamilyLive extends DurableObject<Env> {
       if (request.headers.get('Upgrade') !== 'websocket') {
         return new Response('Expected websocket', { status: 426 });
       }
+      const active = await this.env.DB.prepare('SELECT id FROM devices WHERE id=?1 AND member_id=?2 AND revoked_at IS NULL')
+        .bind(request.headers.get('x-device-id') || '', request.headers.get('x-member-id') || '').first();
+      if (!active) return new Response('Unauthorized', { status: 401 });
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
@@ -66,6 +72,20 @@ export class FamilyLive extends DurableObject<Env> {
       });
       server.send(JSON.stringify({ type: 'connected', ts: Date.now() }));
       return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (url.pathname.endsWith('/account-deleted') && request.method === 'POST') {
+      const { member_id: memberId } = await request.json<{ member_id: string }>();
+      for (const ws of this.ctx.getWebSockets()) {
+        if (ws.deserializeAttachment()?.memberId === memberId) ws.close(1008, 'Account deleted');
+      }
+      const entries = await this.ctx.storage.list<PresenceRecord>({ prefix: 'presence:' });
+      for (const [key, record] of entries) {
+        if (record.memberId === memberId) await this.ctx.storage.delete(key);
+      }
+      await this.scheduleNextAlarm();
+      await this.broadcast(JSON.stringify({ type: 'member_deleted', member_id: memberId }));
+      return Response.json({ ok: true });
     }
 
     if (url.pathname.endsWith('/publish') && request.method === 'POST') {

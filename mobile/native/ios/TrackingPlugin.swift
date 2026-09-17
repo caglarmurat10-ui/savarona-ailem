@@ -16,6 +16,7 @@ final class TrackingPlugin: NSObject {
                 guard let args=call.arguments as? [String:Any], let api=args["apiBaseUrl"] as? String, let token=args["deviceToken"] as? String else { result(FlutterError(code:"invalid_args",message:"apiBaseUrl/deviceToken required",details:nil)); return }
                 LocationTracker.shared.start(apiBaseUrl:api,deviceToken:token); result(nil)
             case "stop": LocationTracker.shared.stop(); result(nil)
+            case "clearAccount": LocationTracker.shared.stop(); TrackingStatusStore.clearAccount(); LocationUploadQueue.shared.clear(); result(nil)
             case "openAppSettings": if let url=URL(string:UIApplication.openSettingsURLString){DispatchQueue.main.async{UIApplication.shared.open(url)}}; result(nil)
             default: result(FlutterMethodNotImplemented)
             }
