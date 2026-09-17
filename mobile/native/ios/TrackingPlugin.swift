@@ -3,8 +3,8 @@ import Foundation
 import UIKit
 
 final class TrackingPlugin: NSObject {
-    static func register(with messenger: FlutterBinaryMessenger) {
-        let channel = FlutterMethodChannel(name: "savarona_ailem/tracking", binaryMessenger: messenger)
+    static func register(with registrar: FlutterPluginRegistrar) {
+        let channel = FlutterMethodChannel(name: "savarona_ailem/tracking", binaryMessenger: registrar.messenger())
         channel.setMethodCallHandler { call, result in
             switch call.method {
             case "status":

@@ -35,7 +35,7 @@ def patch_android()->None:
  gfile.write_text(g)
 def strip_swift_imports(text:str)->str:return '\n'.join(line for line in text.splitlines() if not line.startswith('import '))
 def patch_ios()->None:
- ad=MOBILE/'ios/Runner/AppDelegate.swift';text=ad.read_text();imports='import Flutter\nimport UIKit\nimport Foundation\nimport CoreLocation\nimport Security\n';text=re.sub(r'^(?:import .*\n)+',imports,text);needle='GeneratedPluginRegistrant.register(with: self)';reg='''GeneratedPluginRegistrant.register(with: self)\n    if let controller = window?.rootViewController as? FlutterViewController {\n      TrackingPlugin.register(with: controller.engine.binaryMessenger)\n    }\n    LocationTracker.shared.restoreIfAuthorized()'''
+ ad=MOBILE/'ios/Runner/AppDelegate.swift';text=ad.read_text();imports='import Flutter\nimport UIKit\nimport Foundation\nimport CoreLocation\nimport Security\n';text=re.sub(r'^(?:import .*\n)+',imports,text);needle='GeneratedPluginRegistrant.register(with: self)';reg='''GeneratedPluginRegistrant.register(with: self)\n    if let registrar = self.registrar(forPlugin: "SavaronaTracking") {\n      TrackingPlugin.register(with: registrar)\n    }\n    LocationTracker.shared.restoreIfAuthorized()'''
  if 'TrackingPlugin.register' not in text:text=text.replace(needle,reg)
  src=['KeychainCredentialStore.swift','TrackingStatusStore.swift','LocationUploadQueue.swift','LocationTracker.swift','TrackingPlugin.swift'];marker='// === SAVARONA_NATIVE_TRACKING_BUNDLE ==='
  if marker in text:text.split(marker,1)[0].rstrip()+'\n'

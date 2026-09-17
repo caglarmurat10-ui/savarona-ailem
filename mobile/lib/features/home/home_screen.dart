@@ -34,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _loading = true;
   bool _trackingBusy = false;
   bool _deleting = false;
+  bool _canInvite = false;
   bool _updateDialogOpen = false;
   bool _snapshotRefreshing = false;
   PermissionHealth? _trackingHealth;
@@ -79,6 +80,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _load() async {
     try {
       _members = await widget.api.snapshot();
+      try {
+        final account = await widget.api.me();
+        final role = account['role'] as String?;
+        _canInvite = role == 'owner' || role == 'admin';
+      } catch (_) {
+        _canInvite = false;
+      }
       _liveSub = _live.events.listen(_onLive);
       _connectionSub = _live.connectionState.listen((s) {
         if (mounted) setState(() => _connection = s);
@@ -329,15 +337,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (confirmed != true || !mounted) return;
     setState(() => _deleting = true);
     try {
-      await _native.stop();
+      // Native tracking cleanup must never block the server-side privacy request.
+      try { await _native.stop(); } catch (_) {}
       await widget.api.deleteAccount();
-      await _live.stop();
-      await _native.clearAccount();
+      try { await _live.stop(); } catch (_) {}
+      try { await _native.clearAccount(); } catch (_) {}
       await widget.api.clearSession();
       if (mounted) widget.onAccountDeleted();
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Hesap silinemedi (${e.code}). İnternet bağlantısını kontrol edip yeniden deneyin.'),
+      ));
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('İşlem tamamlanamadı. Konum paylaşımı durduruldu. Bağlantınızı kontrol edip yeniden deneyin.'),
+        content: Text('Hesap silme tamamlandı ancak yerel oturum temizlenemedi. Uygulamayı yeniden başlatın.'),
       ));
     } finally {
       if (mounted) setState(() => _deleting = false);
@@ -358,7 +371,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             onSelected: (_) => _deleteAccount(),
             itemBuilder: (_) => [const PopupMenuItem(value: 'delete', child: Text('Hesabımı sil'))],
             icon: const Icon(Icons.manage_accounts_outlined)),
-          IconButton(icon: const Icon(Icons.person_add_alt), tooltip: 'Davet oluştur', onPressed: _showInvite),
+          if (_canInvite)
+            IconButton(icon: const Icon(Icons.person_add_alt), tooltip: 'Davet oluştur', onPressed: _showInvite),
           IconButton(
             icon: const Icon(Icons.health_and_safety_outlined),
             tooltip: 'İzin durumu',
