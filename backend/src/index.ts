@@ -278,6 +278,10 @@ async function registerPushToken(request: Request, env: Env, p: DevicePrincipal)
   return j({ ok: true }, 201);
 }
 
+function currentAccount(p: DevicePrincipal): Response {
+  return j({ ok: true, member_id: p.memberId, family_id: p.familyId, role: p.role });
+}
+
 async function liveTicket(env: Env, p: DevicePrincipal): Promise<Response> {
   const iat = Math.floor(Date.now()/1000);
   const exp = iat + 60;
@@ -312,6 +316,7 @@ async function route(request: Request, env: Env): Promise<Response> {
 
   const a = await requireAuth(request,env);
   if (a instanceof Response) return a;
+  if (request.method === 'GET' && path === '/v1/me') return currentAccount(a);
   if (request.method === 'DELETE' && path === '/v1/account') return deleteAccount(request,env,a);
   if (request.method === 'POST' && path === '/v1/invites') return createInvite(request,env,a);
   if (request.method === 'POST' && path === '/v1/location') return postLocation(request,env,a);

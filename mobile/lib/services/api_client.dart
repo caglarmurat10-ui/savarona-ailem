@@ -51,6 +51,11 @@ class ApiClient {
     await _tokens.write(r.data['device_token'] as String);
   });
 
+  Future<Map<String, dynamic>> me() => _guard(() async {
+    final r = await _dio.get('/v1/me', options: await _auth());
+    return Map<String, dynamic>.from(r.data as Map);
+  });
+
   Future<void> deleteAccount() => _guard(() async {
     await _dio.delete('/v1/account', options: await _auth(),
       data: {'confirmation': 'DELETE_MY_ACCOUNT'});

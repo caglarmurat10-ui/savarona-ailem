@@ -22,6 +22,9 @@ describe('public registration and account deletion', () => {
     const snapshot = await SELF.fetch(`${base}/v1/family/snapshot`, { headers: headers(a) });
     const data = await snapshot.json<{ members: { member_id: string }[] }>();
     expect(data.members.map(m => m.member_id)).toEqual([a.member_id]);
+    const me = await SELF.fetch(`${base}/v1/me`, { headers: headers(a) });
+    expect(me.status).toBe(200);
+    expect(await me.json()).toMatchObject({ member_id: a.member_id, family_id: a.family_id, role: 'owner' });
     const row = await env.DB.prepare('SELECT token_hash FROM devices WHERE id=?1').bind(a.device_id).first<{token_hash: string}>();
     expect(row?.token_hash).not.toBe(a.device_token);
     expect((await SELF.fetch(`${base}/v1/account`, { method: 'DELETE' })).status).toBe(401);

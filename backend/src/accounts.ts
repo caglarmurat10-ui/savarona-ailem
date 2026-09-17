@@ -45,10 +45,14 @@ export async function deleteAccount(request: Request, env: Env, p: DevicePrincip
     env.DB.prepare('DELETE FROM members WHERE id=?1 AND family_id=?2').bind(p.memberId, p.familyId),
     env.DB.prepare('DELETE FROM families WHERE id=?1 AND NOT EXISTS(SELECT 1 FROM members WHERE family_id=?1)').bind(p.familyId),
   ]);
-  const live = env.FAMILY_LIVE.get(env.FAMILY_LIVE.idFromName(p.familyId));
-  await live.fetch('https://do.internal/account-deleted', {
-    method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ member_id: p.memberId }),
-  });
+  try {
+    const live = env.FAMILY_LIVE.get(env.FAMILY_LIVE.idFromName(p.familyId));
+    await live.fetch('https://do.internal/account-deleted', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ member_id: p.memberId }),
+    });
+  } catch (e) {
+    console.warn('account_deleted_realtime_notify_failed', e instanceof Error ? e.message : String(e));
+  }
   return reply({ ok: true });
 }
