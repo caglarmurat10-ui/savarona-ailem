@@ -1,0 +1,93 @@
+name: appstore-screenshots
+
+# App Store ekran goruntulerini GERCEK uygulamayi iOS Simulator'de surerek uretir.
+# Apple Guideline 2.3.3: gorseller uygulamanin gercek kullanimini gostermeli -
+# yalniz karsilama/acilis ekrani yeterli degil.
+#
+# Is akisi: veri dolu demo aile olustur (public API) -> uygulamayi simulatorde
+# calistir -> canli harita / uye detayi / rota gecmisi ekranlarini yakala.
+
+on:
+  workflow_dispatch:
+    inputs:
+      simulator:
+        description: "Hedef simulator modeli"
+        default: "iPhone 16 Pro Max"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      API_BASE_URL: https://savarona-ailem-api.caglarmurat10.workers.dev
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.2'
+          cache: true
+
+      - name: Generate native shells
+        run: python3 tools/bootstrap_mobile.py
+
+      - name: Seed a populated demo family
+        id: seed
+        run: |
+          set -euo pipefail
+          CODE=$(python3 tools/seed_demo_family.py --api "$API_BASE_URL" --quiet)
+          test -n "$CODE"
+          echo "invite=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Demo aile hazir, davet kodu uretildi."
+
+      - name: Flutter dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Boot simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          NAME="${{ inputs.simulator }}"
+          UDID=$(xcrun simctl list devices available | sed -n "s/^[[:space:]]*${NAME} (\([0-9A-F-]*\)) (Shutdown).*$/\1/p" | head -1)
+          if [ -z "$UDID" ]; then
+            UDID=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*iPhone .*Pro Max (\([0-9A-F-]*\)) (Shutdown).*$/\1/p' | head -1)
+          fi
+          test -n "$UDID"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices | grep "$UDID"
+
+      - name: Drive the app and capture screenshots
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          flutter drive \
+            --driver=test_driver/integration_test.dart \
+            --target=integration_test/app_store_screens_test.dart \
+            -d "${{ steps.sim.outputs.udid }}" \
+            --dart-define="API_BASE_URL=$API_BASE_URL" \
+            --dart-define="DEMO_INVITE_CODE=${{ steps.seed.outputs.invite }}"
+
+      - name: Report captured files
+        working-directory: mobile
+        run: |
+          ls -la screenshots/
+          for f in screenshots/*.png; do
+            echo "$f -> $(sips -g pixelWidth -g pixelHeight "$f" | tail -2 | tr '\n' ' ')"
+          done
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: appstore-screenshots
+          path: mobile/screenshots/*.png
+          if-no-files-found: error
+          retention-days: 14
