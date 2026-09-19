@@ -117,6 +117,25 @@ jobs:
           test -n "$IPA"
           cp "$IPA" build/ios/ipa/Savarona-Ailem-AdHoc.ipa
 
+      - name: Verify Ad Hoc IPA signature
+        run: |
+          set -euo pipefail
+          IPA="mobile/build/ios/ipa/Savarona-Ailem-AdHoc.ipa"
+          rm -rf /tmp/adhoc-verify && mkdir -p /tmp/adhoc-verify
+          unzip -q "$IPA" -d /tmp/adhoc-verify
+          APP=$(find /tmp/adhoc-verify/Payload -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$APP"
+          codesign --verify --deep --strict --verbose=4 "$APP"
+          security cms -D -i "$APP/embedded.mobileprovision" > /tmp/profile.plist
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /tmp/profile.plist)
+          SIGNED_APP_ID=$(codesign -d --entitlements :- "$APP" 2>/dev/null | /usr/libexec/PlistBuddy -c 'Print :application-identifier' /dev/stdin)
+          DEVICE_COUNT=$(/usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices' /tmp/profile.plist | grep -c '^    ' || true)
+          echo "Profile app id: $PROFILE_APP_ID"
+          echo "Signed app id : $SIGNED_APP_ID"
+          echo "Provisioned devices: $DEVICE_COUNT"
+          test "$PROFILE_APP_ID" = "$SIGNED_APP_ID"
+          test "$DEVICE_COUNT" -ge 1
+
       - name: Create OTA manifest
         working-directory: mobile
         run: |
