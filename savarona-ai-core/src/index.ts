@@ -23,7 +23,7 @@ interface Env {
 const VERSION = "0.1.0";
 
 const PROJECTS: Project[] = [
-  { id: "family", name: "Savarona Ailem", repo: "caglarmurat10-ui/savarona-ailem", criticality: "critical" },
+  { id: "family", name: "Savarona Ailem", repo: "caglarmurat10-ui/ailem", criticality: "critical" },
   { id: "villa", name: "Villa Yonetim", repo: "caglarmurat10-ui/villa", criticality: "critical" },
   { id: "hal", name: "HAL Takip", repo: "caglarmurat10-ui/hal", healthUrl: "https://hal-takip.caglarmurat10.workers.dev/api/health", criticality: "normal" },
   { id: "plant", name: "Bitki Analiz", repo: "caglarmurat10-ui/bitkianaliz", criticality: "normal" },
@@ -71,7 +71,7 @@ async function isGitHubActionsAuthorized(request: Request): Promise<boolean> {
       audience: "savarona-ai-core"
     });
     const workflowRef = typeof payload.workflow_ref === "string" ? payload.workflow_ref : "";
-    return payload.repository === "caglarmurat10-ui/savarona-ailem"
+    return payload.repository === "caglarmurat10-ui/ailem"
       && (payload.event_name === "schedule" || payload.event_name === "workflow_dispatch")
       && workflowRef.includes("/.github/workflows/savarona-ai-operations.yml@");
   } catch {

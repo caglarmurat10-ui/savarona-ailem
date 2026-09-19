@@ -8,7 +8,7 @@ class AppConfig {
   static const versionName = String.fromEnvironment('APP_VERSION_NAME', defaultValue: '0.3.5');
   static const updateManifestUrl = String.fromEnvironment(
     'UPDATE_MANIFEST_URL',
-    defaultValue: 'https://raw.githubusercontent.com/caglarmurat10-ui/savarona-ailem/main/updates/android-latest.json',
+    defaultValue: 'https://raw.githubusercontent.com/caglarmurat10-ui/ailem/main/updates/android-latest.json',
   );
 
   static Uri wsUri(String ticket) {
