@@ -139,11 +139,37 @@ async function createInvite(request: Request, env: Env, p: DevicePrincipal): Pro
   return j({ ok: true, invite_code: code, expires_at: expiresAt }, 201);
 }
 
+async function joinReusableReviewDemo(env: Env, b: any, familyId: string): Promise<Response> {
+  const family = await env.DB.prepare('SELECT id FROM families WHERE id=?1').bind(familyId).first<any>();
+  if (!family?.id) return err('review_demo_unavailable', 503);
+  const memberId = crypto.randomUUID();
+  const deviceId = crypto.randomUUID();
+  const token = randomToken(32);
+  const tokenHash = await sha256Hex(token);
+  const ts = now();
+  const platform = ['android','ios','other'].includes(b.platform) ? b.platform : 'other';
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO members(id,family_id,display_name,role,created_at) VALUES(?1,?2,?3,'admin',?4)")
+      .bind(memberId, familyId, String(b.member_name).slice(0,80), ts),
+    env.DB.prepare(`INSERT INTO devices(id,family_id,member_id,display_name,platform,token_hash,created_at)
+                    VALUES(?1,?2,?3,?4,?5,?6,?7)`)
+      .bind(deviceId, familyId, memberId, String(b.device_name).slice(0,80), platform, tokenHash, ts),
+  ]);
+  await publish(env, familyId, { type: 'member_joined', member_id: memberId, display_name: String(b.member_name).slice(0,80), ts });
+  return j({ ok: true, family_id: familyId, member_id: memberId, device_id: deviceId, device_token: token, app_review_demo: true }, 201);
+}
+
 async function joinFamily(request: Request, env: Env): Promise<Response> {
   if (await rateLimited(env, 'RATE_LIMIT_JOIN', clientIp(request))) return err('rate_limited', 429);
   const b = await body<any>(request);
   if (!b?.invite_code || !b?.member_name || !b?.device_name) return err('invalid_body');
   const codeHash = await sha256Hex(String(b.invite_code).trim().toUpperCase());
+  const reviewCode = await env.DB.prepare("SELECT value FROM app_meta WHERE key='app_review_code_hash'").first<any>();
+  if (reviewCode?.value === codeHash) {
+    const reviewFamily = await env.DB.prepare("SELECT value FROM app_meta WHERE key='app_review_family_id'").first<any>();
+    if (!reviewFamily?.value) return err('review_demo_unavailable', 503);
+    return joinReusableReviewDemo(env, b, String(reviewFamily.value));
+  }
   const inv = await env.DB.prepare(`SELECT id,family_id,expires_at,used_at FROM invites WHERE code_hash=?1 LIMIT 1`).bind(codeHash).first<any>();
   if (!inv || inv.used_at || inv.expires_at < now()) return err('invite_invalid_or_expired', 400);
 

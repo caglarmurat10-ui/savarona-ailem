@@ -22,6 +22,8 @@ jobs:
       - run: python3 tools/bootstrap_mobile.py
       - run: flutter pub get
         working-directory: mobile
+      - run: dart run flutter_launcher_icons
+        working-directory: mobile
       - run: flutter analyze
         working-directory: mobile
       - run: flutter test
@@ -51,6 +53,8 @@ jobs:
           cache: true
       - run: python3 tools/bootstrap_mobile.py
       - run: flutter pub get
+        working-directory: mobile
+      - run: dart run flutter_launcher_icons
         working-directory: mobile
       - run: flutter build ios --debug --no-codesign --dart-define=API_BASE_URL=https://savarona-ailem-api.caglarmurat10.workers.dev
         working-directory: mobile

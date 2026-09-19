@@ -50,6 +50,10 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
+      - name: Generate final app icons
+        working-directory: mobile
+        run: dart run flutter_launcher_icons
+
       - name: Boot simulator
         id: sim
         run: |
@@ -57,7 +61,12 @@ jobs:
           NAME="${{ inputs.simulator }}"
           UDID=$(xcrun simctl list devices available | sed -n "s/^[[:space:]]*${NAME} (\([0-9A-F-]*\)) (Shutdown).*$/\1/p" | head -1)
           if [ -z "$UDID" ]; then
-            UDID=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*iPhone .*Pro Max (\([0-9A-F-]*\)) (Shutdown).*$/\1/p' | head -1)
+            if [[ "$NAME" == iPad* ]]; then
+              UDID=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*iPad Pro 13-inch.*(\([0-9A-F-]*\)) (Shutdown).*$/\1/p' | head -1)
+              [ -n "$UDID" ] || UDID=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*iPad Pro.*(\([0-9A-F-]*\)) (Shutdown).*$/\1/p' | head -1)
+            else
+              UDID=$(xcrun simctl list devices available | sed -n 's/^[[:space:]]*iPhone .*Pro Max (\([0-9A-F-]*\)) (Shutdown).*$/\1/p' | head -1)
+            fi
           fi
           test -n "$UDID"
           xcrun simctl boot "$UDID" || true
