@@ -1,0 +1,150 @@
+name: ios-adhoc
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-adhoc:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      BUNDLE_ID: com.savarona.ailem
+      APPLE_TEAM_ID: C8F9Y25AS2
+      API_BASE_URL: https://savarona-ailem-api.caglarmurat10.workers.dev
+      ADHOC_PROFILE_NAME: Savarona Ailem AdHoc
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.2'
+          cache: true
+
+      - name: Generate native shells
+        run: python3 tools/bootstrap_mobile.py
+
+      - name: Flutter dependencies and final icons
+        working-directory: mobile
+        run: |
+          flutter pub get
+          dart run flutter_launcher_icons
+          flutter analyze
+          flutter test
+
+      - name: Import Apple Distribution certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.APPSTORE_CERTIFICATES_FILE_BASE64 }}
+          p12-password: ${{ secrets.APPSTORE_CERTIFICATES_PASSWORD }}
+
+      - name: Ensure Ad Hoc provisioning profile
+        env:
+          APPSTORE_ISSUER_ID: ${{ vars.APPSTORE_ISSUER_ID }}
+          APPSTORE_API_KEY_ID: ${{ vars.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_PRIVATE_KEY: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          APPLE_CERT_SERIAL: 794ED233DE997324097E0EF918B79FA9
+        run: python3 tools/ensure_adhoc.py
+
+      - name: Download Ad Hoc provisioning profile
+        uses: apple-actions/download-provisioning-profiles@v6
+        with:
+          bundle-id: com.savarona.ailem
+          profile-type: IOS_APP_ADHOC
+          issuer-id: ${{ vars.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ vars.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Resolve Ad Hoc profile
+        run: |
+          set -euo pipefail
+          FOUND=''
+          for p in "$HOME/Library/MobileDevice/Provisioning Profiles"/*.mobileprovision; do
+            [ -f "$p" ] || continue
+            security cms -D -i "$p" > /tmp/profile.plist
+            NAME=$(/usr/libexec/PlistBuddy -c 'Print :Name' /tmp/profile.plist 2>/dev/null || true)
+            APP_ID=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' /tmp/profile.plist 2>/dev/null || true)
+            PROVISIONED=$(/usr/libexec/PlistBuddy -c 'Print :ProvisionedDevices:0' /tmp/profile.plist 2>/dev/null || true)
+            if [[ "$NAME" == "$ADHOC_PROFILE_NAME" && "$APP_ID" == *".$BUNDLE_ID" && -n "$PROVISIONED" ]]; then
+              FOUND="$NAME"
+              break
+            fi
+          done
+          test -n "$FOUND"
+          echo "PROFILE_NAME=$FOUND" >> "$GITHUB_ENV"
+
+      - name: Configure signing
+        working-directory: mobile
+        run: |
+          cat >> ios/Flutter/Release.xcconfig <<EOF
+          DEVELOPMENT_TEAM = $APPLE_TEAM_ID
+          CODE_SIGN_STYLE = Manual
+          CODE_SIGN_IDENTITY = Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER = $PROFILE_NAME
+          EOF
+
+      - name: Build and archive
+        working-directory: mobile
+        run: |
+          set -euo pipefail
+          BUILD_NUMBER=$((2000 + GITHUB_RUN_NUMBER))
+          echo "SAVARONA_BUILD_NUMBER=$BUILD_NUMBER" >> "$GITHUB_ENV"
+          flutter build ios --release --no-codesign --build-number="$BUILD_NUMBER" --dart-define="API_BASE_URL=$API_BASE_URL"
+          rm -rf build/ios/archive build/ios/ipa
+          mkdir -p build/ios/archive build/ios/ipa
+          xcodebuild -workspace ios/Runner.xcworkspace -scheme Runner -configuration Release -destination 'generic/platform=iOS' -archivePath build/ios/archive/Runner.xcarchive archive
+
+      - name: Export Ad Hoc IPA
+        working-directory: mobile
+        run: |
+          cat > ios/ExportOptions.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+          <key>method</key><string>ad-hoc</string>
+          <key>signingStyle</key><string>manual</string>
+          <key>teamID</key><string>$APPLE_TEAM_ID</string>
+          <key>provisioningProfiles</key><dict><key>$BUNDLE_ID</key><string>$PROFILE_NAME</string></dict>
+          </dict></plist>
+          EOF
+          plutil -lint ios/ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/ios/archive/Runner.xcarchive -exportPath build/ios/ipa -exportOptionsPlist ios/ExportOptions.plist
+          IPA=$(find build/ios/ipa -maxdepth 1 -name '*.ipa' -print -quit)
+          test -n "$IPA"
+          cp "$IPA" build/ios/ipa/Savarona-Ailem-AdHoc.ipa
+
+      - name: Create OTA manifest
+        working-directory: mobile
+        run: |
+          TAG="adhoc-${SAVARONA_BUILD_NUMBER}"
+          IPA_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Savarona-Ailem-AdHoc.ipa"
+          cat > build/ios/ipa/manifest.plist <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict><key>items</key><array><dict>
+          <key>assets</key><array><dict><key>kind</key><string>software-package</string><key>url</key><string>${IPA_URL}</string></dict></array>
+          <key>metadata</key><dict><key>bundle-identifier</key><string>${BUNDLE_ID}</string><key>bundle-version</key><string>${SAVARONA_BUILD_NUMBER}</string><key>kind</key><string>software</string><key>title</key><string>Savarona Ailem</string></dict>
+          </dict></array></dict></plist>
+          EOF
+          plutil -lint build/ios/ipa/manifest.plist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: savarona-ailem-adhoc-${{ env.SAVARONA_BUILD_NUMBER }}
+          path: |
+            mobile/build/ios/ipa/Savarona-Ailem-AdHoc.ipa
+            mobile/build/ios/ipa/manifest.plist
+          retention-days: 30
+
+      - name: Publish installable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="adhoc-${SAVARONA_BUILD_NUMBER}"
+          gh release create "$TAG" mobile/build/ios/ipa/Savarona-Ailem-AdHoc.ipa mobile/build/ios/ipa/manifest.plist --title "Savarona Ailem Ad Hoc ${SAVARONA_BUILD_NUMBER}" --notes "Private family-device Ad Hoc build. Installs only on Apple Developer-registered devices."
+          echo "INSTALL_MANIFEST=https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/manifest.plist" >> "$GITHUB_STEP_SUMMARY"
