@@ -1,6 +1,6 @@
 import { SELF, env } from 'cloudflare:test';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { decryptSecret } from '../src/crypto';
+import { decryptSecret, sha256Hex } from '../src/crypto';
 
 const BASE = 'https://example.com';
 const BOOTSTRAP_SECRET = 'test-bootstrap-secret';
@@ -132,6 +132,42 @@ describe('family journey', () => {
       body: JSON.stringify({ invite_code, member_name: 'X', device_name: 'Y', platform: 'ios' }),
     });
     expect(reuse.status).toBe(400);
+  });
+
+  it('allows the configured App Review code to be reused for full demo access', async () => {
+    const reviewCode = 'REVIEW42';
+    const reviewHash = await sha256Hex(reviewCode);
+    const ts = Date.now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT OR REPLACE INTO app_meta(key,value,updated_at) VALUES('app_review_code_hash',?1,?2)").bind(reviewHash, ts),
+      env.DB.prepare("INSERT OR REPLACE INTO app_meta(key,value,updated_at) VALUES('app_review_family_id',?1,?2)").bind(owner.family_id, ts),
+    ]);
+
+    const join = async (name: string) => SELF.fetch(`${BASE}/v1/join`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'cf-connecting-ip': '192.0.2.88' },
+      body: JSON.stringify({ invite_code: reviewCode, member_name: name, device_name: 'Review iPhone', platform: 'ios' }),
+    });
+    const first = await join('Reviewer One');
+    const second = await join('Reviewer Two');
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const a = await first.json<any>();
+    const b = await second.json<any>();
+    expect(a.app_review_demo).toBe(true);
+    expect(b.app_review_demo).toBe(true);
+    expect(a.member_id).not.toBe(b.member_id);
+
+    const me = await SELF.fetch(`${BASE}/v1/me`, { headers: authHeaders(a.device_token) });
+    expect(me.status).toBe(200);
+    expect((await me.json<any>()).role).toBe('admin');
+    for (const account of [a, b]) {
+      const deleted = await SELF.fetch(`${BASE}/v1/account`, {
+        method: 'DELETE', headers: authHeaders(account.device_token),
+        body: JSON.stringify({ confirmation: 'DELETE_MY_ACCOUNT' }),
+      });
+      expect(deleted.status).toBe(200);
+    }
   });
 
   it('accepts an increasing location sequence and rejects a replayed one', async () => {

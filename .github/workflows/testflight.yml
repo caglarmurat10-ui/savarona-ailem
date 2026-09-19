@@ -47,6 +47,10 @@ jobs:
         working-directory: mobile
         run: flutter pub get
 
+      - name: Generate final app icons
+        working-directory: mobile
+        run: dart run flutter_launcher_icons
+
       - name: Validate Flutter before signing
         working-directory: mobile
         run: |
