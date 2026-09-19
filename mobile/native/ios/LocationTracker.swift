@@ -25,23 +25,40 @@ final class LocationTracker: NSObject, CLLocationManagerDelegate {
         manager.allowsBackgroundLocationUpdates=true; manager.showsBackgroundLocationIndicator=true
     }
 
-    func requestPermission(completion:@escaping(Bool)->Void){ pendingPermissionCompletion=completion; if manager.authorizationStatus == .notDetermined { manager.requestWhenInUseAuthorization() } else { manager.requestAlwaysAuthorization() } }
+    func requestPermission(completion:@escaping(Bool)->Void){
+        pendingPermissionCompletion=completion
+        switch manager.authorizationStatus {
+        case .authorizedAlways:
+            pendingPermissionCompletion=nil; completion(true)
+        case .authorizedWhenInUse:
+            manager.requestAlwaysAuthorization()
+            pendingPermissionCompletion=nil; completion(true)
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .denied,.restricted:
+            pendingPermissionCompletion=nil; completion(false)
+        @unknown default:
+            pendingPermissionCompletion=nil; completion(false)
+        }
+    }
 
     func start(apiBaseUrl:String, deviceToken:String){
         TrackingStatusStore.saveCredentials(apiBaseUrl:apiBaseUrl,deviceToken:deviceToken); TrackingStatusStore.setTrackingRequested(true)
-        guard authorized else { refreshPermissionStatus(); TrackingStatusStore.setTrackingActive(false); return }
-        TrackingStatusStore.setPermissionState("granted_always")
-        if #available(iOS 17.0, *) { backgroundSession=CLBackgroundActivitySession() }
+        guard canTrack else { refreshPermissionStatus(); TrackingStatusStore.setTrackingActive(false); return }
+        refreshPermissionStatus()
+        manager.allowsBackgroundLocationUpdates = authorizedAlways
+        if authorizedAlways, #available(iOS 17.0, *) { backgroundSession=CLBackgroundActivitySession() }
         manager.startUpdatingLocation(); TrackingStatusStore.setTrackingActive(true); startHeartbeat(); scheduleFlush(after:0)
     }
 
     func stop(){ TrackingStatusStore.setTrackingRequested(false); pauseTracking() }
     private func pauseTracking(){ manager.stopUpdatingLocation(); if #available(iOS 17.0, *){(backgroundSession as? CLBackgroundActivitySession)?.invalidate()}; backgroundSession=nil; heartbeatTimer?.invalidate(); heartbeatTimer=nil; TrackingStatusStore.setTrackingActive(false) }
 
-    func restoreIfAuthorized(){ guard authorized, let api=TrackingStatusStore.apiBaseUrl, let token=TrackingStatusStore.deviceToken, TrackingStatusStore.trackingRequested else{return}; start(apiBaseUrl:api,deviceToken:token) }
+    func restoreIfAuthorized(){ guard canTrack, let api=TrackingStatusStore.apiBaseUrl, let token=TrackingStatusStore.deviceToken, TrackingStatusStore.trackingRequested else{return}; start(apiBaseUrl:api,deviceToken:token) }
 
     func refreshPermissionStatus(){ switch manager.authorizationStatus { case .authorizedAlways:TrackingStatusStore.setPermissionState("granted_always"); case .authorizedWhenInUse:TrackingStatusStore.setPermissionState("granted_when_in_use"); case .denied,.restricted:TrackingStatusStore.setPermissionState(TrackingStatusStore.trackingRequested ? "permission_lost":"denied"); case .notDetermined:TrackingStatusStore.setPermissionState("not_requested"); @unknown default:TrackingStatusStore.setPermissionState("not_requested") } }
-    private var authorized:Bool { manager.authorizationStatus == .authorizedAlways }
+    private var authorizedAlways:Bool { manager.authorizationStatus == .authorizedAlways }
+    private var canTrack:Bool { manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse }
 
     func locationManager(_ manager:CLLocationManager,didChangeAuthorization status:CLAuthorizationStatus){
         switch status {
@@ -49,7 +66,10 @@ final class LocationTracker: NSObject, CLLocationManagerDelegate {
             pendingPermissionCompletion?(true); pendingPermissionCompletion=nil; TrackingStatusStore.setPermissionState("granted_always")
             if TrackingStatusStore.trackingRequested && !TrackingStatusStore.trackingActive, let api=TrackingStatusStore.apiBaseUrl, let token=TrackingStatusStore.deviceToken { start(apiBaseUrl:api,deviceToken:token) }
         case .authorizedWhenInUse:
-            pendingPermissionCompletion?(false); pendingPermissionCompletion=nil; TrackingStatusStore.setPermissionState("granted_when_in_use"); if TrackingStatusStore.trackingRequested { pauseTracking(); sendHeartbeat() }
+            TrackingStatusStore.setPermissionState("granted_when_in_use")
+            manager.requestAlwaysAuthorization()
+            pendingPermissionCompletion?(true); pendingPermissionCompletion=nil
+            if TrackingStatusStore.trackingRequested, let api=TrackingStatusStore.apiBaseUrl, let token=TrackingStatusStore.deviceToken { start(apiBaseUrl:api,deviceToken:token) }
         case .denied,.restricted:
             pendingPermissionCompletion?(false); pendingPermissionCompletion=nil; let was=TrackingStatusStore.trackingRequested; TrackingStatusStore.setPermissionState(was ? "permission_lost":"denied"); if was { pauseTracking(); sendHeartbeat() }
         case .notDetermined: TrackingStatusStore.setPermissionState("not_requested")
@@ -80,7 +100,7 @@ final class LocationTracker: NSObject, CLLocationManagerDelegate {
 
     private func scheduleFlush(after delay:TimeInterval){ guard !flushScheduled else{return}; flushScheduled=true; DispatchQueue.main.asyncAfter(deadline:.now()+delay){[weak self] in self?.flushScheduled=false; self?.flushOnce()} }
     private func flushOnce(){
-        guard TrackingStatusStore.trackingRequested, TrackingStatusStore.apiBaseUrl != nil, TrackingStatusStore.deviceToken != nil else{return}; guard authorized else{refreshPermissionStatus();scheduleFlush(after:10);return}; guard let item=LocationUploadQueue.shared.peekOldest() else{scheduleFlush(after:2);return}
+        guard TrackingStatusStore.trackingRequested, TrackingStatusStore.apiBaseUrl != nil, TrackingStatusStore.deviceToken != nil else{return}; guard canTrack else{refreshPermissionStatus();scheduleFlush(after:10);return}; guard let item=LocationUploadQueue.shared.peekOldest() else{scheduleFlush(after:2);return}
         send(item){[weak self] outcome in guard let self else{return}; switch outcome { case .delivered,.alreadyDelivered:LocationUploadQueue.shared.remove(id:item.id);TrackingStatusStore.markSendSuccess();self.flushBackoff=2;self.scheduleFlush(after:0); case .failed(let msg):TrackingStatusStore.setLastError(msg);self.flushBackoff=min(self.flushBackoff*2,60);self.scheduleFlush(after:self.flushBackoff) } }
     }
     private enum SendOutcome{case delivered,alreadyDelivered,failed(String)}
