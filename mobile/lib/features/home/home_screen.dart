@@ -92,6 +92,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (mounted) setState(() => _connection = s);
       });
       await Future.wait([_live.start(), _refreshTrackingStatus()]);
+      if (_trackingHealth != null && !_trackingHealth!.trackingRequested) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) unawaited(_startTracking());
+        });
+      }
       _snapshotTimer ??= Timer.periodic(
         const Duration(seconds: 30),
         (_) => unawaited(_refreshSnapshot()),
